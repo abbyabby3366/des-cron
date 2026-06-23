@@ -594,12 +594,12 @@ function renderTasksList(tasks) {
 
     let actionBtns = '';
     if (task.status === 'Active') {
-      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="pauseTask(${task.id})">Pause</button>`;
+      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')">Pause</button>`;
     } else if (task.status === 'Paused' || task.status === 'Failed') {
-      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="resumeTask(${task.id})">Resume</button>`;
+      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')">Resume</button>`;
     }
-    actionBtns += `<button class="btn btn-secondary btn-sm" onclick="openTaskDialog(${task.id})">Edit</button>`;
-    actionBtns += `<button class="btn btn-danger btn-sm" onclick="deleteTask(${task.id})">Delete</button>`;
+    actionBtns += `<button class="btn btn-secondary btn-sm" onclick="openTaskDialog('${task.id}')">Edit</button>`;
+    actionBtns += `<button class="btn btn-danger btn-sm" onclick="deleteTask('${task.id}')">Delete</button>`;
 
     card.innerHTML = `
       <div class="task-card-left">
@@ -1113,7 +1113,7 @@ function renderUsersList(users) {
       waStatus = '<span style="color: var(--text-muted);">—</span>';
     }
 
-    const deleteBtn = u.id === currentUser.id ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')">Delete</button>`;
+    const deleteBtn = u.id === currentUser.id ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${escapeHtml(u.username)}')">Delete</button>`;
       
     tr.innerHTML = `
       <td style="font-weight: 600;">${escapeHtml(u.username)}</td>
@@ -1121,7 +1121,7 @@ function renderUsersList(users) {
       <td>${waStatus}</td>
       <td style="color: var(--text-muted); font-size: 0.85rem;">${new Date(u.createdAt).toLocaleDateString()}</td>
       <td style="display: flex; gap: 0.5rem;">
-        <button class="btn btn-secondary btn-sm" onclick="openEditUserDialog(${u.id})">Edit</button>
+        <button class="btn btn-secondary btn-sm" onclick="openEditUserDialog('${u.id}')">Edit</button>
         ${deleteBtn}
       </td>
     `;
