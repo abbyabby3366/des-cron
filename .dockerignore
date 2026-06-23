@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.env
+cronwa.db
+cronwa.db-wal
+cronwa.db-shm
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
