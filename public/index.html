@@ -16,12 +16,7 @@
     <div class="login-brand">
       <div class="sidebar-header" style="margin-bottom: 0;">
         <div class="logo-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
+          <img src="whatsapp_logo.png" alt="CronWA Logo">
         </div>
         <span class="logo-text">CronWA</span>
       </div>
@@ -68,12 +63,7 @@
         <!-- Mobile Logo -->
         <div class="login-logo-mobile">
           <div class="logo-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
+            <img src="whatsapp_logo.png" alt="CronWA Logo">
           </div>
           <span class="logo-text">CronWA</span>
         </div>
@@ -113,12 +103,7 @@
       <div>
         <div class="sidebar-header">
           <div class="logo-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="16" y1="2" x2="16" y2="6"></line>
-              <line x1="8" y1="2" x2="8" y2="6"></line>
-              <line x1="3" y1="10" x2="21" y2="10"></line>
-            </svg>
+            <img src="whatsapp_logo.png" alt="CronWA Logo">
           </div>
           <span class="logo-text">CronWA</span>
         </div>
@@ -177,7 +162,7 @@
     <!-- Main Content Area -->
     <main class="main-content">
       <!-- Mobile header toggle -->
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); background-color: var(--sidebar-bg); z-index: 5;" class="login-logo-mobile">
+      <div class="mobile-header-toggle">
         <button id="mobileMenuBtn" class="btn btn-secondary btn-sm" aria-label="Toggle menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
@@ -195,10 +180,6 @@
             <p class="page-subtitle" id="taskSummaryText">No scheduled tasks</p>
           </div>
           <div style="display: flex; gap: 0.75rem;" id="taskHeaderActions">
-            <button id="sendTestNotificationBtn" class="btn btn-secondary" style="display: none;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-              Send test
-            </button>
             <button id="createNewTaskBtn" class="btn btn-primary">
               New task
             </button>
@@ -209,7 +190,20 @@
 
         <div id="statsContainer" class="stats-grid"></div>
 
-        <div id="tasksList" class="tasks-list">
+        <div id="tasksTableContainer" class="panel table-scroll" style="display: none;">
+          <table>
+            <thead>
+              <tr id="tasksTableHeaderRow">
+                <!-- Dynamically populated -->
+              </tr>
+            </thead>
+            <tbody id="tasksTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="tasksEmptyState" style="display: none;">
           <!-- Dynamically populated -->
         </div>
       </div>
@@ -220,8 +214,7 @@
       <div id="logsTab" class="page-container">
         <div class="page-header">
           <div>
-            <h1 class="page-title">Audit Logs</h1>
-            <p class="page-subtitle">Logs of sent messages</p>
+            <h1 class="page-title">Sent message logs</h1>
           </div>
           <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">
             Refresh
@@ -232,12 +225,9 @@
           <table>
             <thead>
               <tr>
-                <th>Time</th>
-                <th id="logsOwnerHeader">Owner</th>
-                <th>Task Name</th>
-                <th>Recipient JID</th>
-                <th>Message Content</th>
-                <th>Status</th>
+                <th>Task Details</th>
+                <th>Message</th>
+                <th>Status &amp; Time</th>
               </tr>
             </thead>
             <tbody id="logsTableBody">
@@ -265,6 +255,13 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
             <button id="calTodayBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem;">Today</button>
+            <button id="calToggleDailyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+              <svg id="calToggleDailyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+              <span id="calToggleDailyText">Hide daily</span>
+            </button>
           </div>
         </div>
 
@@ -302,76 +299,32 @@
         <div id="settingsAlertContainer"></div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
-          <!-- WhatsApp Verification status panel -->
-          <div class="panel">
+          <!-- WhatsApp Default JID/Number panel -->
+          <div class="panel" style="max-width: 480px;">
             <div class="panel-header">
-              <h3 class="panel-title">WhatsApp connection</h3>
+              <h3 class="panel-title">Default target WhatsApp number</h3>
             </div>
             
-            <div id="waStatusNotBound" style="display: none;">
-              <p style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
-                Your account is currently not bound to a WhatsApp number. Send your verification code to the WhatsApp service bot number.
-              </p>
-              <div class="verif-box">
-                <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Verification code</p>
-                <div class="verif-code" id="settingsVerificationCode">---- ----</div>
+            <div id="waStatusConnected" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: var(--success-bg); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 6px; font-size: 0.8rem; line-height: 1.4;">
+              <span style="color: var(--text-muted);">Current default number:</span> <strong id="settingsBoundChatId" style="color: var(--success); font-family: monospace;"></strong>
+            </div>
+            <div id="waStatusDisconnected" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: var(--warning-bg); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 6px; font-size: 0.8rem; line-height: 1.4;">
+              <span style="color: var(--text-muted);">Status:</span> <strong style="color: var(--warning);">No default number set</strong>
+            </div>
+            
+            <form id="manualWaForm" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <input type="text" id="manualWaNumber" class="input" placeholder="e.g., 60122273341" required style="max-width: 320px; width: 100%;">
               </div>
-              <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
-                Send this exact code as a WhatsApp message to the service bot. Your status will verify automatically.
-              </p>
-            </div>
-
-            <div id="waStatusBound" style="display: none;">
-              <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--success); font-weight: 600; margin-bottom: 1rem;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span>Verified Connection</span>
+              <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem;">
+                <button type="submit" class="btn btn-primary btn-sm">Save default</button>
               </div>
-              <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem;">
-                Bound WhatsApp: <strong id="settingsBoundChatId" style="color: var(--text);">60122273341</strong>
-              </p>
-              <button id="settingsTestBtn" class="btn btn-secondary btn-sm" style="width: 100%;">
-                Send test message
-              </button>
-            </div>
-
-            <!-- Manual binding form (Available for both to override) -->
-            <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1.5rem;">
-              <h4 style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-secondary);">Direct override number</h4>
-              <form id="manualWaForm" style="display: flex; gap: 0.5rem;">
-                <input type="text" id="manualWaNumber" class="input" placeholder="60122273341" required style="flex-grow: 1;">
-                <button type="submit" class="btn btn-secondary btn-sm">Save</button>
-              </form>
-              <p class="form-hint">E.g., 60122273341. Or a Group JID for team lists.</p>
-            </div>
+            </form>
+            <p class="form-hint" style="margin-top: 0.5rem;">This number will be pre-filled when creating new tasks.</p>
           </div>
 
           <!-- Change password panel -->
-          <div class="panel">
-            <div class="panel-header">
-              <h3 class="panel-title">Change password</h3>
-            </div>
-            
-            <form id="changePasswordForm">
-              <div class="form-group">
-                <label class="form-label" for="oldPassword">Current password</label>
-                <input type="password" id="oldPassword" class="input" required autocomplete="current-password">
-              </div>
-              
-              <div class="form-group">
-                <label class="form-label" for="newPassword">New password</label>
-                <input type="password" id="newPassword" class="input" required minlength="6" autocomplete="new-password">
-              </div>
 
-              <div class="form-group">
-                <label class="form-label" for="confirmPassword">Confirm new password</label>
-                <input type="password" id="confirmPassword" class="input" required minlength="6" autocomplete="new-password">
-              </div>
-
-              <button type="submit" class="btn btn-primary" style="width: 100%;">
-                Update password
-              </button>
-            </form>
-          </div>
         </div>
       </div>
 
@@ -397,7 +350,7 @@
               <tr>
                 <th>Username</th>
                 <th>Role</th>
-                <th>WhatsApp Status</th>
+                <th>WhatsApp JID / Number</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
@@ -421,67 +374,77 @@
     </div>
     
     <form id="taskForm">
-      <input type="hidden" id="taskIdField">
-      
-      <div class="form-group">
-        <label class="form-label" for="taskName">Task name</label>
-        <input type="text" id="taskName" class="input" placeholder="Daily summary reminder" required>
-      </div>
+      <div class="form-body-scroll">
+        <input type="hidden" id="taskIdField">
+        
+        <div class="form-group">
+          <label class="form-label" for="taskName">Task name</label>
+          <input type="text" id="taskName" class="input" placeholder="Daily summary reminder" required>
+        </div>
 
-      <!-- Target User (Admin only selection) -->
-      <div class="form-group" id="adminUserSelectionGroup" style="display: none;">
-        <label class="form-label" for="taskOwnerSelect">Target User</label>
-        <select id="taskOwnerSelect" class="input">
-          <!-- Populated dynamically -->
-        </select>
-        <p class="form-hint">Assign this scheduled task to a specific user.</p>
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="taskTargetWaChatId">Recipient WhatsApp JID / Number</label>
+          <input type="text" id="taskTargetWaChatId" class="input" placeholder="e.g., 60122273341" required>
+          <p class="form-hint">The main phone number or JID to send this message to.</p>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="taskType">Schedule type</label>
-        <select id="taskType" class="input">
-          <option value="OneTime">One-time</option>
-          <option value="Interval">Interval (recurring)</option>
-          <option value="Cron">Cron expression</option>
-        </select>
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="taskType">Schedule type</label>
+          <select id="taskType" class="input">
+            <option value="OneTime">One-time</option>
+            <option value="Interval">Interval (recurring)</option>
+            <option value="Cron">Cron expression</option>
+          </select>
+        </div>
 
-      <!-- One-time configuration -->
-      <div class="form-group schedule-field" id="oneTimeFields">
-        <label class="form-label" for="runAt">Run at</label>
-        <input type="datetime-local" id="runAt" class="input">
-      </div>
+        <!-- One-time configuration -->
+        <div class="form-group schedule-field" id="oneTimeFields">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+            <label class="form-label" for="runAt" style="margin-bottom: 0;">Run at</label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; cursor: pointer; user-select: none;">
+              <input type="checkbox" id="sendImmediately" style="width: 14px; height: 14px; accent-color: var(--accent);">
+              Send immediately
+            </label>
+          </div>
+          <input type="datetime-local" id="runAt" class="input">
+        </div>
 
-      <!-- Interval configuration -->
-      <div class="form-group schedule-field" id="intervalFields" style="display: none;">
-        <label class="form-label" for="intervalSecs">Interval (seconds)</label>
-        <input type="number" id="intervalSecs" class="input" placeholder="3600" min="60">
-        <p class="form-hint">Minimum 60 seconds.</p>
-      </div>
+        <!-- Interval configuration -->
+        <div class="form-group schedule-field" id="intervalFields" style="display: none;">
+          <label class="form-label" for="intervalSecs">Interval (seconds)</label>
+          <input type="number" id="intervalSecs" class="input" placeholder="3600" min="60">
+          <p class="form-hint">Minimum 60 seconds.</p>
+        </div>
 
-      <!-- Cron configuration -->
-      <div class="form-group schedule-field" id="cronFields" style="display: none;">
-        <label class="form-label" for="cronExpr">Cron expression</label>
-        <input type="text" id="cronExpr" class="input input-mono" placeholder="0 9 * * *">
-        <p class="form-hint">Format: minute hour day month weekday — e.g. "0 9 * * *" is daily at 9:00 AM.</p>
-      </div>
+        <!-- Cron configuration -->
+        <div class="form-group schedule-field" id="cronFields" style="display: none;">
+          <label class="form-label" for="cronExpr">Cron expression</label>
+          <input type="text" id="cronExpr" class="input input-mono" placeholder="0 9 * * *">
+          <p class="form-hint">Format: minute hour day month weekday — e.g. "0 9 * * *" is daily at 9:00 AM.</p>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="messageTemplate">Personal message</label>
-        <textarea id="messageTemplate" class="input" rows="3" placeholder="Hello! Here is your scheduled personal message..." required></textarea>
-        <p class="form-hint">Sent to the owner's bound WhatsApp number.</p>
-      </div>
+        <div class="form-group">
+          <label class="form-label" for="messageTemplate">Personal message</label>
+          <textarea id="messageTemplate" class="input" rows="3" placeholder="Hello! Here is your scheduled personal message..." required></textarea>
+          <p class="form-hint">Sent to the owner's bound WhatsApp number.</p>
+        </div>
 
-      <div class="form-group">
-        <label class="form-label" for="messageTemplate2">Broadcast message (optional)</label>
-        <textarea id="messageTemplate2" class="input" rows="3" placeholder="Here is the broadcast update..."></textarea>
-        <p class="form-hint">Sent to all extra recipients listed below.</p>
-      </div>
+        <details class="accordion">
+          <summary>Send to multiple recipients (Optional)</summary>
+          <div class="accordion-content">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="targetList">Additional Recipients (comma-separated JIDs/numbers)</label>
+              <input type="text" id="targetList" class="input" placeholder="e.g., 60122273342, 60122273343">
+              <p class="form-hint">List WhatsApp numbers or Group JIDs separated by commas.</p>
+            </div>
 
-      <div class="form-group">
-        <label class="form-label" for="targetList">Extra recipients (comma-separated, optional)</label>
-        <input type="text" id="targetList" class="input" placeholder="60122273342, 60122273343">
-        <p class="form-hint">List WhatsApp numbers or JIDs separated by commas.</p>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="messageTemplate2">Custom Message for Additional Recipients (Optional)</label>
+              <textarea id="messageTemplate2" class="input" rows="3" placeholder="Leave blank to send the main personal message instead, or enter a custom message for them..."></textarea>
+              <p class="form-hint">If empty, these additional recipients will receive the main personal message configured above.</p>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="dialog-buttons">
@@ -511,6 +474,11 @@
         <input type="password" id="createUserPassword" class="input" required minlength="6" autocomplete="new-password">
       </div>
 
+      <div class="form-group">
+        <label class="form-label" for="createUserChatId">WhatsApp JID / Number (Optional)</label>
+        <input type="text" id="createUserChatId" class="input" placeholder="e.g., 60122273341">
+      </div>
+
       <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1.5rem;">
         <input type="checkbox" id="createUserIsAdmin" style="width: 16px; height: 16px; accent-color: var(--accent);">
         <label for="createUserIsAdmin" style="font-size: 0.9rem; cursor: pointer; user-select: none;">Admin privileges</label>
@@ -523,32 +491,7 @@
     </form>
   </dialog>
 
-  <!-- ========================================== -->
-  <!-- MODAL: SHOW USER VERIFICATION CODE -->
-  <!-- ========================================== -->
-  <dialog id="codeDialog" closedby="any" aria-labelledby="codeDialogTitle">
-    <div class="dialog-header">
-      <h2 id="codeDialogTitle" class="dialog-title">User Created</h2>
-      <button class="dialog-close-btn" onclick="document.getElementById('codeDialog').close()">&times;</button>
-    </div>
-    
-    <div style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 1rem;">
-      Share this code with <strong id="createdUsernameLabel"></strong>. They must send it as a WhatsApp message to the bot to verify their account before they can log in.
-    </div>
 
-    <div class="verif-box">
-      <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Verification Code</p>
-      <div class="verif-code" id="createdCodeLabel">---- ----</div>
-    </div>
-
-    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-      The code is also visible in the users table. It is consumed once verified and cannot be reused.
-    </p>
-
-    <div class="dialog-buttons">
-      <button type="button" class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('codeDialog').close()">Done</button>
-    </div>
-  </dialog>
 
   <!-- ========================================== -->
   <!-- MODAL: EDIT USER (Admin overrides) -->
@@ -583,10 +526,7 @@
         <p class="form-hint">E.g., 60122273341. Binding manually clears pending verification.</p>
       </div>
 
-      <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem;">
-        <input type="checkbox" id="editUserResetVerification" style="width: 16px; height: 16px; accent-color: var(--accent);">
-        <label for="editUserResetVerification" style="font-size: 0.9rem; cursor: pointer; user-select: none; color: #f59e0b;">Reset verification (generate new code)</label>
-      </div>
+
 
       <div class="dialog-buttons">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editUserDialog').close()">Cancel</button>

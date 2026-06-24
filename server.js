@@ -34,26 +34,38 @@ async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) return res.status(401).json({ error: 'Access token required' });
+  console.log(`[Auth Middleware] Request: ${req.method} ${req.url}, Token provided: ${token ? token.substring(0, 8) + '...' : 'NONE'}`);
+
+  if (!token) {
+    console.log('[Auth Middleware] Denied: Access token required');
+    return res.status(401).json({ error: 'Access token required' });
+  }
 
   try {
     const session = await Session.findOne({ token });
 
-    if (!session) return res.status(401).json({ error: 'Invalid or expired session' });
+    if (!session) {
+      console.log('[Auth Middleware] Denied: Invalid or expired session (not found in DB)');
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
 
     if (session.expires_at < Date.now()) {
+      console.log(`[Auth Middleware] Denied: Session expired. Expires: ${new Date(session.expires_at).toISOString()}, Current time: ${new Date().toISOString()}`);
       await Session.deleteOne({ _id: session._id });
       return res.status(401).json({ error: 'Session expired' });
     }
 
     const user = await User.findById(session.user_id);
-    if (!user) return res.status(401).json({ error: 'User not found' });
+    if (!user) {
+      console.log('[Auth Middleware] Denied: User not found in DB');
+      return res.status(401).json({ error: 'User not found' });
+    }
 
     req.user = user;
     req.token = token;
     next();
   } catch (err) {
-    console.error('Auth middleware error:', err);
+    console.error('[Auth Middleware] Error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 }
@@ -82,16 +94,8 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (!user.is_admin && !user.chat_id) {
-      return res.status(403).json({
-        error: 'Account not yet verified. Please send the verification code via WhatsApp first.',
-        unverified: true,
-        verificationCode: user.verification_code
-      });
-    }
-
-    // Invalidate prior sessions
-    await Session.deleteMany({ user_id: user._id });
+    // Invalidate prior sessions (commented out to allow concurrent logins)
+    // await Session.deleteMany({ user_id: user._id });
 
     const token = generateToken();
     const expiryDays = parseInt(process.env.SESSION_EXPIRY_DAYS, 10) || 30;
@@ -105,8 +109,7 @@ app.post('/api/auth/login', async (req, res) => {
         id: user._id,
         username: user.username,
         isAdmin: !!user.is_admin,
-        chatId: user.chat_id,
-        verificationCode: user.verification_code
+        chatId: user.chat_id
       }
     });
   } catch (err) {
@@ -173,19 +176,6 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
 // TASKS API
 // ---------------------------------------------------------------
 
-// IMPORTANT: /test MUST come before /:id
-app.post('/api/tasks/test', authenticateToken, async (req, res) => {
-  if (!req.user.chat_id) {
-    return res.status(400).json({ error: 'WhatsApp not verified yet' });
-  }
-
-  try {
-    await sendWhatsAppMessage(req.user.chat_id, '🔔 Test notification — your WhatsApp scheduler is working correctly!');
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: `Failed to send test: ${err.message}` });
-  }
-});
 
 // Dashboard stats
 app.get('/api/tasks/stats', authenticateToken, async (req, res) => {
@@ -271,33 +261,21 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/tasks', authenticateToken, async (req, res) => {
-  const { name, taskType, targetList, scheduleSpec, messageTemplate, messageTemplate2, ownerUserId } = req.body;
+  const { name, taskType, targetWaChatId, targetList, scheduleSpec, messageTemplate, messageTemplate2 } = req.body;
 
-  if (!name || !taskType || !scheduleSpec || !messageTemplate) {
+  if (!name || !taskType || !targetWaChatId || !scheduleSpec || !messageTemplate) {
     return res.status(400).json({ error: 'Required fields missing' });
   }
 
   try {
-    let targetOwnerId = req.user._id;
-
-    if (req.user.is_admin) {
-      if (!ownerUserId) return res.status(400).json({ error: 'Admin must specify target ownerUserId' });
-      if (ownerUserId === req.user._id.toString()) return res.status(400).json({ error: 'Admin cannot create tasks for themselves' });
-      targetOwnerId = ownerUserId;
-    }
-
-    const owner = await User.findById(targetOwnerId, 'chat_id');
-    if (!owner) return res.status(400).json({ error: 'Target owner user not found' });
-    if (!owner.chat_id) return res.status(400).json({ error: 'Target user has no bound WhatsApp number' });
-
     const now = Date.now();
     const nextRun = calculateNextRun(taskType, scheduleSpec, now);
 
     const task = await Task.create({
-      owner_user_id: targetOwnerId,
+      owner_user_id: req.user._id,
       name,
       task_type: taskType,
-      target_wa_chat_id: owner.chat_id,
+      target_wa_chat_id: targetWaChatId,
       target_list: targetList || [],
       status: 'Active',
       schedule_spec: scheduleSpec,
@@ -317,7 +295,7 @@ app.post('/api/tasks', authenticateToken, async (req, res) => {
 
 app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { name, targetList, scheduleSpec, messageTemplate, messageTemplate2 } = req.body;
+  const { name, targetWaChatId, targetList, scheduleSpec, messageTemplate, messageTemplate2 } = req.body;
 
   try {
     const task = await Task.findById(id);
@@ -329,6 +307,7 @@ app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
     const now = Date.now();
 
     if (name) task.name = name;
+    if (targetWaChatId) task.target_wa_chat_id = targetWaChatId;
     if (targetList) task.target_list = targetList;
     if (messageTemplate) task.message_template = messageTemplate;
     if (messageTemplate2 !== undefined) task.message_template_2 = messageTemplate2;
@@ -453,12 +432,23 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
     };
     const logs = await SendLog.find(logFilter).sort({ sent_at: 1 }).lean();
 
+    // Fetch all user's tasks to map log metadata
+    const tasksForMap = await Task.find(filter).lean();
+    const taskMap = {};
+    for (const t of tasksForMap) {
+      taskMap[t._id.toString()] = {
+        task_type: t.task_type,
+        schedule_spec: t.schedule_spec
+      };
+    }
+
     // Group logs by day
     const logsByDay = {};
     for (const log of logs) {
       const d = new Date(log.sent_at);
       const dayKey = d.getDate();
       if (!logsByDay[dayKey]) logsByDay[dayKey] = [];
+      const taskMeta = taskMap[log.task_id?.toString()] || {};
       logsByDay[dayKey].push({
         id: log._id,
         task_name: log.task_name,
@@ -466,7 +456,10 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
         message: log.message,
         success: log.success,
         error_msg: log.error_msg,
-        sent_at: log.sent_at
+        sent_at: log.sent_at,
+        task_type: taskMeta.task_type,
+        expression: taskMeta.schedule_spec?.expression,
+        interval_secs: taskMeta.schedule_spec?.interval_secs
       });
     }
 
@@ -537,17 +530,15 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
         const intervalMs = intervalSecs * 1000;
         // Start from last_run or created_at, project forward
         let cursor = task.next_run_at || task.last_run_at || task.created_at;
-        // Walk backward to find first occurrence before month start if needed
+        // Project forward/backward to the start of the month using division (O(1))
         if (cursor > monthStart) {
-          // The task may have fired before this month, compute the first fire in the month
-          while (cursor > monthStart && cursor - intervalMs >= monthStart) {
-            cursor -= intervalMs;
-          }
+          const diff = cursor - monthStart;
+          const steps = Math.floor(diff / intervalMs);
+          cursor -= steps * intervalMs;
         } else {
-          // Walk forward to month start
-          while (cursor < monthStart) {
-            cursor += intervalMs;
-          }
+          const diff = monthStart - cursor;
+          const steps = Math.ceil(diff / intervalMs);
+          cursor += steps * intervalMs;
         }
         let count = 0;
         while (cursor < monthEnd && count < 100) {
@@ -628,7 +619,7 @@ app.get('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =>
 });
 
 app.post('/api/admin/users', authenticateToken, requireAdmin, async (req, res) => {
-  const { username, passwordHash, isAdmin } = req.body;
+  const { username, passwordHash, isAdmin, chatId } = req.body;
 
   if (!username || !passwordHash) {
     return res.status(400).json({ error: 'Username and passwordHash required' });
@@ -638,17 +629,16 @@ app.post('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =
     const existing = await User.findOne({ username });
     if (existing) return res.status(400).json({ error: `Username '${username}' already taken` });
 
-    const verificationCode = generateVerificationCode();
     await User.create({
       username,
       password_hash: passwordHash,
       is_admin: !!isAdmin,
-      verification_code: verificationCode,
+      chat_id: chatId || null,
       created_at: Date.now(),
       created_by_id: req.user._id.toString()
     });
 
-    res.json({ success: true, verificationCode });
+    res.json({ success: true });
   } catch (err) {
     console.error('Admin create user error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -657,27 +647,18 @@ app.post('/api/admin/users', authenticateToken, requireAdmin, async (req, res) =
 
 app.put('/api/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { id } = req.params;
-  const { username, passwordHash, isAdmin, chatId, resetVerification } = req.body;
+  const { username, passwordHash, isAdmin, chatId } = req.body;
 
   try {
     const targetUser = await User.findById(id);
     if (!targetUser) return res.status(404).json({ error: 'User not found' });
 
-    let finalVerificationCode = targetUser.verification_code;
     let finalChatId = chatId !== undefined ? chatId : targetUser.chat_id;
-
-    if (resetVerification) {
-      finalVerificationCode = generateVerificationCode();
-      finalChatId = null;
-    } else if (finalChatId) {
-      finalVerificationCode = null;
-    }
 
     targetUser.username = username || targetUser.username;
     targetUser.password_hash = passwordHash || targetUser.password_hash;
     if (isAdmin !== undefined) targetUser.is_admin = !!isAdmin;
     targetUser.chat_id = finalChatId;
-    targetUser.verification_code = finalVerificationCode;
     await targetUser.save();
 
     // Cascade chatId change to tasks
@@ -749,7 +730,7 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
     await Task.updateMany({ owner_user_id: matchedUser._id }, { target_wa_chat_id: senderNumber });
 
     try {
-      await sendWhatsAppMessage(senderNumber, '✅ WhatsApp verified! You can now log in to the notification scheduler.');
+      await sendWhatsAppMessage(senderNumber, 'WhatsApp verified! You can now log in to the notification scheduler.');
     } catch (sendErr) {
       console.error('[Webhook] Failed to send confirmation:', sendErr.message);
     }

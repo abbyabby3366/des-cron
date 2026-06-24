@@ -1,6 +1,10 @@
 // Front-end Application logic for CronWA
 
 let currentUser = null;
+try {
+  const cachedUser = localStorage.getItem('cronwa_user');
+  if (cachedUser) currentUser = JSON.parse(cachedUser);
+} catch (e) {}
 let apiToken = localStorage.getItem('cronwa_token') || null;
 let cachedUsers = [];
 let cachedTasks = [];
@@ -32,15 +36,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupDialogLightDismiss();
   
-  if (apiToken) {
-    const success = await fetchCurrentUser();
-    if (success) {
-      showApp();
-    } else {
-      logout();
+  if (apiToken && currentUser) {
+    // Optimistically show the app using the cached profile to prevent login screen flashing
+    showApp();
+    
+    const res = await fetchCurrentUser();
+    if (!res.success) {
+      if (res.status === 401) {
+        logout();
+      } else {
+        toggleConnectionBanner(true);
+      }
     }
   } else {
     showLogin();
+    if (apiToken) {
+      const res = await fetchCurrentUser();
+      if (res.success) {
+        showApp();
+      } else {
+        logout();
+      }
+    }
   }
 });
 
@@ -53,12 +70,39 @@ async function fetchCurrentUser() {
     if (res.ok) {
       currentUser = await res.json();
       localStorage.setItem('cronwa_user', JSON.stringify(currentUser));
-      return true;
+      toggleConnectionBanner(false);
+      updateProfileUI();
+      return { success: true };
     }
-    return false;
+    return { success: false, status: res.status };
   } catch (err) {
     console.error('Error fetching current user:', err);
-    return false;
+    return { success: false, status: 'network-error' };
+  }
+}
+
+function toggleConnectionBanner(show) {
+  let banner = document.getElementById('connectionBanner');
+  if (!banner) {
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+      banner = document.createElement('div');
+      banner.id = 'connectionBanner';
+      banner.className = 'connection-banner';
+      banner.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        <span>Connection lost. Operating in cached offline mode. Reconnecting...</span>
+      `;
+      const toggle = mainContent.querySelector('.mobile-header-toggle');
+      if (toggle) {
+        toggle.insertAdjacentElement('afterend', banner);
+      } else {
+        mainContent.insertBefore(banner, mainContent.firstChild);
+      }
+    }
+  }
+  if (banner) {
+    banner.style.display = show ? 'flex' : 'none';
   }
 }
 
@@ -75,20 +119,33 @@ function showApp() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('appPage').style.display = 'flex';
   
-  document.getElementById('profileUsername').textContent = currentUser.username;
-  document.getElementById('profileRole').textContent = currentUser.isAdmin ? 'Admin' : 'User';
-  document.getElementById('userAvatar').textContent = currentUser.username.charAt(0).toUpperCase();
-  
-  if (currentUser.isAdmin) {
-    document.getElementById('adminNav').style.display = 'block';
-    fetchUsersList();
-  } else {
-    document.getElementById('adminNav').style.display = 'none';
-  }
+  updateProfileUI();
   
   const hash = window.location.hash.replace('#', '') || 'dashboard';
   switchTab(hash);
   startAutoRefresh();
+}
+
+function updateProfileUI() {
+  if (!currentUser) return;
+  
+  const profileUsername = document.getElementById('profileUsername');
+  const profileRole = document.getElementById('profileRole');
+  const userAvatar = document.getElementById('userAvatar');
+  const adminNav = document.getElementById('adminNav');
+
+  if (profileUsername) profileUsername.textContent = currentUser.username;
+  if (profileRole) profileRole.textContent = currentUser.isAdmin ? 'Admin' : 'User';
+  if (userAvatar) userAvatar.textContent = currentUser.username.charAt(0).toUpperCase();
+  
+  if (adminNav) {
+    if (currentUser.isAdmin) {
+      adminNav.style.display = 'block';
+      fetchUsersList();
+    } else {
+      adminNav.style.display = 'none';
+    }
+  }
 }
 
 function switchTab(tabId) {
@@ -126,8 +183,20 @@ function setupNavigation() {
     });
   });
   
-  document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+  document.getElementById('mobileMenuBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
     document.getElementById('appSidebar').classList.toggle('mobile-open');
+  });
+  
+  // Close mobile sidebar when clicking outside
+  document.addEventListener('click', (e) => {
+    const sidebar = document.getElementById('appSidebar');
+    const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+    if (sidebar.classList.contains('mobile-open') && 
+        !sidebar.contains(e.target) && 
+        !mobileMenuBtn.contains(e.target)) {
+      sidebar.classList.remove('mobile-open');
+    }
   });
   
   document.getElementById('logoutBtn').addEventListener('click', logout);
@@ -198,15 +267,7 @@ function setupEventListeners() {
       const data = await res.json();
       
       if (!res.ok) {
-        if (data.unverified) {
-          showAlert(alertContainer, 'warning', `
-            <strong>Account Pending Verification</strong><br>
-            Send this code to the WhatsApp bot to verify:<br>
-            <div class="verif-code" style="margin: 0.5rem 0; font-size: 1.5rem;">${formatVerifCode(data.verificationCode)}</div>
-          `);
-        } else {
-          showAlert(alertContainer, 'danger', data.error || 'Login failed');
-        }
+        showAlert(alertContainer, 'danger', data.error || 'Login failed');
         return;
       }
       
@@ -233,55 +294,21 @@ function setupEventListeners() {
     if (el) el.style.display = 'block';
   });
 
+  // Send immediately selector
+  document.getElementById('sendImmediately').addEventListener('change', (e) => {
+    const runAtInput = document.getElementById('runAt');
+    if (e.target.checked) {
+      runAtInput.disabled = true;
+      runAtInput.value = '';
+    } else {
+      runAtInput.disabled = false;
+    }
+  });
+
   // Task form
   document.getElementById('taskForm').addEventListener('submit', handleTaskFormSubmit);
   document.getElementById('createNewTaskBtn').addEventListener('click', () => openTaskDialog());
 
-  // Send test (Dashboard)
-  document.getElementById('sendTestNotificationBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('sendTestNotificationBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Sending…';
-    const alert = document.getElementById('dashboardAlertContainer');
-    alert.innerHTML = '';
-    
-    try {
-      const res = await fetch('/api/tasks/test', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiToken}` }
-      });
-      const data = await res.json();
-      showAlert(alert, res.ok ? 'success' : 'danger', res.ok ? '✅ Test message sent!' : (data.error || 'Failed'));
-    } catch (err) {
-      showAlert(alert, 'danger', 'Network error');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send test`;
-    }
-  });
-
-  // Send test (Settings)
-  document.getElementById('settingsTestBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('settingsTestBtn');
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-    const alert = document.getElementById('settingsAlertContainer');
-    alert.innerHTML = '';
-
-    try {
-      const res = await fetch('/api/tasks/test', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiToken}` }
-      });
-      const data = await res.json();
-      showAlert(alert, res.ok ? 'success' : 'danger', res.ok ? '✅ Test message sent!' : (data.error || 'Failed'));
-    } catch (e) {
-      showAlert(alert, 'danger', 'Error sending test');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Send test message';
-    }
-  });
 
   // Manual WhatsApp binding
   document.getElementById('manualWaForm').addEventListener('submit', async (e) => {
@@ -298,7 +325,7 @@ function setupEventListeners() {
       });
       const data = await res.json();
       if (res.ok) {
-        showAlert(alert, 'success', '✅ WhatsApp number updated!');
+        showAlert(alert, 'success', 'WhatsApp number updated!');
         currentUser.chatId = number;
         currentUser.verificationCode = null;
         localStorage.setItem('cronwa_user', JSON.stringify(currentUser));
@@ -312,37 +339,7 @@ function setupEventListeners() {
     }
   });
 
-  // Change password
-  document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const oldP = document.getElementById('oldPassword').value;
-    const newP = document.getElementById('newPassword').value;
-    const confP = document.getElementById('confirmPassword').value;
-    const alert = document.getElementById('settingsAlertContainer');
-    alert.innerHTML = '';
 
-    if (newP !== confP) {
-      showAlert(alert, 'danger', 'Passwords do not match');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
-        body: JSON.stringify({ oldPasswordHash: await sha256Hex(oldP), newPasswordHash: await sha256Hex(newP) })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert(alert, 'success', '✅ Password updated!');
-        document.getElementById('changePasswordForm').reset();
-      } else {
-        showAlert(alert, 'danger', data.error || 'Failed');
-      }
-    } catch (err) {
-      showAlert(alert, 'danger', 'Network error');
-    }
-  });
 
   // Refresh logs button
   document.getElementById('refreshLogsBtn').addEventListener('click', () => refreshLogs());
@@ -373,6 +370,23 @@ function setupEventListeners() {
     refreshCalendar();
   });
 
+  // Calendar Daily Toggle
+  const toggleDailyBtn = document.getElementById('calToggleDailyBtn');
+  if (toggleDailyBtn) {
+    const initialHide = localStorage.getItem('cal_hide_daily') === 'true';
+    updateToggleDailyBtnState(initialHide);
+
+    toggleDailyBtn.addEventListener('click', () => {
+      const currentHide = localStorage.getItem('cal_hide_daily') === 'true';
+      const newHide = !currentHide;
+      localStorage.setItem('cal_hide_daily', newHide);
+      updateToggleDailyBtnState(newHide);
+      if (calendarData) {
+        renderCalendar(calendarData);
+      }
+    });
+  }
+
   // Create User
   document.getElementById('createNewUserBtn').addEventListener('click', () => {
     document.getElementById('userForm').reset();
@@ -385,6 +399,7 @@ function setupEventListeners() {
     const username = document.getElementById('createUserUsername').value.trim();
     const pass = document.getElementById('createUserPassword').value;
     const isAdmin = document.getElementById('createUserIsAdmin').checked;
+    const chatId = document.getElementById('createUserChatId').value.trim();
     const alert = document.getElementById('adminAlertContainer');
     alert.innerHTML = '';
 
@@ -392,18 +407,15 @@ function setupEventListeners() {
       const res = await fetch('/api/admin/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
-        body: JSON.stringify({ username, passwordHash: await sha256Hex(pass), isAdmin })
+        body: JSON.stringify({ username, passwordHash: await sha256Hex(pass), isAdmin, chatId: chatId || null })
       });
-      const data = await res.json();
       
       if (res.ok) {
         document.getElementById('userDialog').close();
         refreshUsers();
-        
-        document.getElementById('createdUsernameLabel').textContent = username;
-        document.getElementById('createdCodeLabel').textContent = formatVerifCode(data.verificationCode);
-        document.getElementById('codeDialog').showModal();
+        showAlert(alert, 'success', `User "${username}" created!`);
       } else {
+        const data = await res.json();
         showAlert(alert, 'danger', data.error || 'Failed to create user');
         document.getElementById('userDialog').close();
       }
@@ -421,12 +433,11 @@ function setupEventListeners() {
     const pass = document.getElementById('editUserPassword').value;
     const isAdmin = document.getElementById('editUserIsAdmin').checked;
     const chatId = document.getElementById('editUserChatId').value.trim();
-    const resetVerification = document.getElementById('editUserResetVerification').checked;
     
     const alert = document.getElementById('adminAlertContainer');
     alert.innerHTML = '';
 
-    const payload = { username, isAdmin, chatId: chatId || null, resetVerification };
+    const payload = { username, isAdmin, chatId: chatId || null };
     if (pass) payload.passwordHash = await sha256Hex(pass);
 
     try {
@@ -458,6 +469,7 @@ function setupDialogLightDismiss() {
     if (!('closedBy' in HTMLDialogElement.prototype)) {
       dialog.addEventListener('click', (event) => {
         if (event.target !== dialog) return;
+        if (event.clientX === 0 && event.clientY === 0) return; // Prevent dismissal on native select/date-time overlays
         const rect = dialog.getBoundingClientRect();
         const inside = (
           rect.top <= event.clientY && event.clientY <= rect.top + rect.height &&
@@ -486,6 +498,7 @@ async function refreshStats() {
     });
     if (!res.ok) return;
     const stats = await res.json();
+    toggleConnectionBanner(false);
     
     const container = document.getElementById('statsContainer');
     if (!container) return;
@@ -512,7 +525,9 @@ async function refreshStats() {
         <div class="stat-label">Sent (24h)</div>
       </div>
     `;
-  } catch (e) {}
+  } catch (e) {
+    toggleConnectionBanner(true);
+  }
 }
 
 // ---------------------------------------------------------------
@@ -533,40 +548,58 @@ async function refreshTasks(silent = false) {
     
     const tasks = await res.json();
     cachedTasks = tasks;
+    toggleConnectionBanner(false);
     
     const summaryText = document.getElementById('taskSummaryText');
     summaryText.textContent = tasks.length === 0
       ? 'No scheduled tasks'
       : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'} scheduled`;
-
-    const testBtn = document.getElementById('sendTestNotificationBtn');
-    testBtn.style.display = currentUser.chatId ? 'inline-flex' : 'none';
     
     renderTasksList(tasks);
   } catch (err) {
     console.error('Error refreshing tasks:', err);
+    toggleConnectionBanner(true);
   }
 }
 
 function renderTasksList(tasks) {
-  const container = document.getElementById('tasksList');
-  container.innerHTML = '';
+  const tableContainer = document.getElementById('tasksTableContainer');
+  const emptyState = document.getElementById('tasksEmptyState');
+  const headerRow = document.getElementById('tasksTableHeaderRow');
+  const tbody = document.getElementById('tasksTableBody');
+  
+  tbody.innerHTML = '';
   
   if (tasks.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-        <h4 class="empty-title">No tasks scheduled yet</h4>
-        <p class="empty-desc">Create your first notification task to get started.</p>
-        <button class="btn btn-primary btn-sm" onclick="openTaskDialog()">Create first task</button>
-      </div>
-    `;
+    if (tableContainer) tableContainer.style.display = 'none';
+    if (emptyState) {
+      emptyState.style.display = 'block';
+      emptyState.innerHTML = `
+        <div class="empty-state">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <h4 class="empty-title">No tasks scheduled yet</h4>
+          <p class="empty-desc">Create your first notification task to get started.</p>
+          <button class="btn btn-primary btn-sm" onclick="openTaskDialog()">Create first task</button>
+        </div>
+      `;
+    }
     return;
   }
   
+  if (tableContainer) tableContainer.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
+  
+  // Build header
+  const headerHtml = `
+    <th>Task Details</th>
+    <th>Message</th>
+    <th>Schedule &amp; Runs</th>
+    <th style="text-align: right;">Actions</th>
+  `;
+  if (headerRow) headerRow.innerHTML = headerHtml;
+
   tasks.forEach(task => {
-    const card = document.createElement('div');
-    card.className = 'task-card';
+    const tr = document.createElement('tr');
     
     const statusMap = {
       Active: 'badge-success', Paused: 'badge-secondary', Firing: 'badge-warning',
@@ -587,39 +620,48 @@ function renderTasksList(tasks) {
     const nextRun = task.next_run_at ? new Date(task.next_run_at).toLocaleString() : '—';
     const lastRun = task.last_run_at ? new Date(task.last_run_at).toLocaleString() : 'Never';
     
-    let ownerText = '';
-    if (currentUser.isAdmin && task.owner_username) {
-      ownerText = `<div class="task-meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${escapeHtml(task.owner_username)}</div>`;
-    }
+    const ownerText = currentUser.isAdmin
+      ? ` • by ${escapeHtml(task.owner_username || 'Unknown')}`
+      : '';
 
     let actionBtns = '';
     if (task.status === 'Active') {
-      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')">Pause</button>`;
+      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg></button>`;
     } else if (task.status === 'Paused' || task.status === 'Failed') {
-      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')">Resume</button>`;
+      actionBtns += `<button class="btn btn-secondary btn-sm" onclick="resumeTask('${task.id}')" title="Resume" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg></button>`;
     }
-    actionBtns += `<button class="btn btn-secondary btn-sm" onclick="openTaskDialog('${task.id}')">Edit</button>`;
-    actionBtns += `<button class="btn btn-danger btn-sm" onclick="deleteTask('${task.id}')">Delete</button>`;
+    actionBtns += `<button class="btn btn-secondary btn-sm" onclick="openTaskDialog('${task.id}')" title="Edit" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
+    actionBtns += `<button class="btn btn-danger btn-sm" onclick="deleteTask('${task.id}')" title="Delete" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
 
-    card.innerHTML = `
-      <div class="task-card-left">
-        <div class="task-card-title-row">
-          <span class="task-name">${escapeHtml(task.name)}</span>
+    tr.innerHTML = `
+      <td>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+          <span class="td-name">${escapeHtml(task.name)}</span>
           <span class="badge ${statusClass}">${task.status}</span>
           <span class="badge badge-primary">${task.task_type}</span>
         </div>
-        <div class="task-desc">${escapeHtml(task.message_template)}</div>
-        <div class="task-meta">
-          ${ownerText}
-          <div class="task-meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> ${escapeHtml(task.target_wa_chat_id)}</div>
-          <div class="task-meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> ${schedDetail}</div>
-          <div class="task-meta-item">Next: ${nextRun}</div>
-          <div class="task-meta-item">Last: ${lastRun}</div>
+        <div class="td-meta" style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="td-mono">To: ${escapeHtml(task.target_wa_chat_id)}</span>
+          <span style="opacity: 0.8;">${ownerText}</span>
         </div>
-      </div>
-      <div class="task-actions">${actionBtns}</div>
+      </td>
+      <td class="td-msg" title="${escapeHtml(task.message_template)}">
+        ${escapeHtml(task.message_template)}
+      </td>
+      <td>
+        <div style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary);">${escapeHtml(schedDetail)}</div>
+        <div class="td-meta" style="margin-top: 0.25rem; line-height: 1.3;">
+          <div>Last: ${lastRun}</div>
+          <div>Next: ${nextRun}</div>
+        </div>
+      </td>
+      <td>
+        <div style="display: flex; justify-content: flex-end; gap: 0.35rem;">
+          ${actionBtns}
+        </div>
+      </td>
     `;
-    container.appendChild(card);
+    tbody.appendChild(tr);
   });
 }
 
@@ -658,17 +700,21 @@ function openTaskDialog(taskId = null) {
   
   const idField = document.getElementById('taskIdField');
   const title = document.getElementById('taskDialogTitle');
-  const userSelectGroup = document.getElementById('adminUserSelectionGroup');
-  const userSelect = document.getElementById('taskOwnerSelect');
   
   document.querySelectorAll('.schedule-field').forEach(f => f.style.display = 'none');
   document.getElementById('oneTimeFields').style.display = 'block';
-  
-  if (currentUser.isAdmin) {
-    userSelectGroup.style.display = 'block';
-    populateAdminUserSelect(userSelect);
-  } else {
-    userSelectGroup.style.display = 'none';
+
+  // Reset immediate send checkbox
+  const sendImm = document.getElementById('sendImmediately');
+  if (sendImm) {
+    sendImm.checked = false;
+    document.getElementById('runAt').disabled = false;
+  }
+
+  // Reset accordion
+  const accordion = document.querySelector('#taskDialog .accordion');
+  if (accordion) {
+    accordion.open = false;
   }
 
   if (taskId) {
@@ -680,11 +726,10 @@ function openTaskDialog(taskId = null) {
     
     document.getElementById('taskName').value = task.name;
     document.getElementById('taskType').value = task.task_type;
+    document.getElementById('taskTargetWaChatId').value = task.target_wa_chat_id || '';
     document.getElementById('messageTemplate').value = task.message_template;
     document.getElementById('messageTemplate2').value = task.message_template_2 || '';
     document.getElementById('targetList').value = (task.targetList || []).join(', ');
-    
-    userSelectGroup.style.display = 'none';
     
     document.querySelectorAll('.schedule-field').forEach(f => f.style.display = 'none');
     const spec = task.scheduleSpec || {};
@@ -698,24 +743,19 @@ function openTaskDialog(taskId = null) {
       document.getElementById('cronFields').style.display = 'block';
       document.getElementById('cronExpr').value = spec.expression || '';
     }
+
+    // Open accordion if broadcast has data
+    const hasBroadcast = task.message_template_2 || (task.targetList && task.targetList.length > 0);
+    if (accordion) {
+      accordion.open = !!hasBroadcast;
+    }
   } else {
     title.textContent = 'Create Task';
     idField.value = '';
+    document.getElementById('taskTargetWaChatId').value = currentUser.chatId || '';
   }
   
   document.getElementById('taskDialog').showModal();
-}
-
-function populateAdminUserSelect(el) {
-  el.innerHTML = '';
-  const users = cachedUsers.filter(u => u.id !== currentUser.id);
-  if (users.length === 0) {
-    el.innerHTML = '<option value="" disabled>No eligible users</option>';
-  } else {
-    users.forEach(u => {
-      el.innerHTML += `<option value="${u.id}">${escapeHtml(u.username)} (ID: ${u.id})</option>`;
-    });
-  }
 }
 
 async function handleTaskFormSubmit(e) {
@@ -723,6 +763,7 @@ async function handleTaskFormSubmit(e) {
   const taskId = document.getElementById('taskIdField').value;
   const name = document.getElementById('taskName').value.trim();
   const taskType = document.getElementById('taskType').value;
+  const targetWaChatId = document.getElementById('taskTargetWaChatId').value.trim();
   const messageTemplate = document.getElementById('messageTemplate').value.trim();
   const messageTemplate2 = document.getElementById('messageTemplate2').value.trim();
   const targetListText = document.getElementById('targetList').value.trim();
@@ -731,9 +772,14 @@ async function handleTaskFormSubmit(e) {
     
   let scheduleSpec = {};
   if (taskType === 'OneTime') {
-    const val = document.getElementById('runAt').value;
-    if (!val) return alert('Please enter a trigger date.');
-    scheduleSpec = { run_at: new Date(val).toISOString() };
+    const sendImmediately = document.getElementById('sendImmediately').checked;
+    if (sendImmediately) {
+      scheduleSpec = { run_at: new Date().toISOString() };
+    } else {
+      const val = document.getElementById('runAt').value;
+      if (!val) return alert('Please enter a trigger date.');
+      scheduleSpec = { run_at: new Date(val).toISOString() };
+    }
   } else if (taskType === 'Interval') {
     const secs = parseInt(document.getElementById('intervalSecs').value, 10);
     if (!secs || secs < 60) return alert('Interval must be at least 60 seconds.');
@@ -744,7 +790,7 @@ async function handleTaskFormSubmit(e) {
     scheduleSpec = { expression: cron };
   }
 
-  const payload = { name, taskType, targetList, scheduleSpec, messageTemplate, messageTemplate2 };
+  const payload = { name, taskType, targetWaChatId, targetList, scheduleSpec, messageTemplate, messageTemplate2 };
   const alertEl = document.getElementById('dashboardAlertContainer');
   alertEl.innerHTML = '';
   const submitBtn = document.getElementById('taskFormSubmitBtn');
@@ -759,7 +805,6 @@ async function handleTaskFormSubmit(e) {
         body: JSON.stringify(payload)
       });
     } else {
-      if (currentUser.isAdmin) payload.ownerUserId = document.getElementById('taskOwnerSelect').value;
       res = await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
@@ -772,7 +817,7 @@ async function handleTaskFormSubmit(e) {
       document.getElementById('taskDialog').close();
       refreshTasks();
       refreshStats();
-      showAlert(alertEl, 'success', `✅ Task ${taskId ? 'updated' : 'created'}!`);
+      showAlert(alertEl, 'success', `Task ${taskId ? 'updated' : 'created'}!`);
     } else {
       alert(data.error || 'Failed to save task.');
     }
@@ -805,29 +850,38 @@ async function refreshLogs() {
 
 function renderLogsList(logs) {
   const tbody = document.getElementById('logsTableBody');
-  const ownerH = document.getElementById('logsOwnerHeader');
   tbody.innerHTML = '';
-  ownerH.style.display = currentUser.isAdmin ? 'table-cell' : 'none';
 
   if (logs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${currentUser.isAdmin ? 6 : 5}" style="text-align: center; color: var(--text-muted); padding: 3rem;">No logs yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 3rem;">No logs yet.</td></tr>`;
     return;
   }
 
   logs.forEach(log => {
     const tr = document.createElement('tr');
     const badge = log.success
-      ? '<span class="badge badge-success">✓ Sent</span>'
-      : `<span class="badge badge-danger" title="${escapeHtml(log.error_msg || '')}">✗ Failed</span>`;
-    const ownerCol = currentUser.isAdmin ? `<td>${escapeHtml(log.owner_username || `#${log.owner_user_id}`)}</td>` : '';
+      ? '<span class="badge badge-success" style="display: inline-flex; align-items: center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.25rem;"><polyline points="20 6 9 17 4 12"></polyline></svg>Sent</span>'
+      : `<span class="badge badge-danger" style="display: inline-flex; align-items: center;" title="${escapeHtml(log.error_msg || '')}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.25rem;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Failed</span>`;
+      
+    const ownerText = currentUser.isAdmin
+      ? ` • by ${escapeHtml(log.owner_username || `#${log.owner_user_id}`)}`
+      : '';
       
     tr.innerHTML = `
-      <td style="color: var(--text-muted); font-size: 0.85rem; white-space: nowrap;">${new Date(log.sent_at).toLocaleString()}</td>
-      ${ownerCol}
-      <td style="font-weight: 500;">${escapeHtml(log.task_name)}</td>
-      <td class="input-mono" style="font-size: 0.8rem;">${escapeHtml(log.target_jid)}</td>
-      <td style="font-size: 0.85rem; color: var(--text-secondary); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(log.message)}</td>
-      <td>${badge}</td>
+      <td>
+        <div class="td-name">${escapeHtml(log.task_name)}</div>
+        <div class="td-meta" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+          <span class="td-mono">To: ${escapeHtml(log.target_jid)}</span>
+          <span style="opacity: 0.8;">${ownerText}</span>
+        </div>
+      </td>
+      <td class="td-msg" title="${escapeHtml(log.message)}">${escapeHtml(log.message)}</td>
+      <td>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          ${badge}
+        </div>
+        <div class="td-meta" style="margin-top: 0.25rem;">${new Date(log.sent_at).toLocaleString()}</div>
+      </td>
     `;
     tbody.appendChild(tr);
   });
@@ -847,6 +901,44 @@ async function refreshCalendar() {
     renderCalendar(calendarData);
   } catch (e) {
     console.error('Error refreshing calendar:', e);
+  }
+}
+
+function isDailySchedule(item) {
+  if (item.task_type === 'Interval') {
+    return item.interval_secs && item.interval_secs <= 86400;
+  }
+  if (item.task_type === 'Cron' && item.expression) {
+    const parts = item.expression.trim().split(/\s+/);
+    if (parts.length >= 5) {
+      const dom = parts[2];
+      const dow = parts[4];
+      return dom === '*' && (dow === '*' || dow === '?');
+    }
+  }
+  return false;
+}
+
+function updateToggleDailyBtnState(hideDaily) {
+  const btn = document.getElementById('calToggleDailyBtn');
+  const text = document.getElementById('calToggleDailyText');
+  const icon = document.getElementById('calToggleDailyIcon');
+  if (!btn || !text || !icon) return;
+
+  if (hideDaily) {
+    btn.classList.add('btn-toggle-active');
+    text.textContent = 'Show daily';
+    icon.innerHTML = `
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    `;
+  } else {
+    btn.classList.remove('btn-toggle-active');
+    text.textContent = 'Hide daily';
+    icon.innerHTML = `
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+      <line x1="1" y1="1" x2="23" y2="23"></line>
+    `;
   }
 }
 
@@ -882,6 +974,8 @@ function renderCalendar(data) {
   const isCurrentMonth = today.getFullYear() === data.year && (today.getMonth() + 1) === data.month;
   const todayDay = today.getDate();
 
+  const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
+
   // Render current month days
   for (let day = 1; day <= totalDays; day++) {
     const cell = document.createElement('div');
@@ -894,38 +988,32 @@ function renderCalendar(data) {
     const dayLogs = (data.logs && data.logs[day]) || [];
     const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
     
+    const dayLogsFiltered = hideDaily ? dayLogs.filter(l => !isDailySchedule(l)) : dayLogs;
+    const dayScheduledFiltered = hideDaily ? dayScheduled.filter(s => !isDailySchedule(s)) : dayScheduled;
+    
     let dotsHtml = '';
     let labelsHtml = '';
     
-    // Track unique scheduled tasks for labels
-    const schedTaskNames = [...new Set(dayScheduled.map(s => s.name))];
+    const sentLogs = dayLogsFiltered.filter(l => l.success);
+    const failedLogs = dayLogsFiltered.filter(l => !l.success);
     
-    // Add dots
-    if (dayScheduled.length > 0) {
-      dotsHtml += `<div class="cal-dot cal-dot-scheduled"></div>`;
+    let dots = [];
+    if (dayScheduledFiltered.length > 0) {
+      dots.push(`<div class="cal-dot cal-dot-scheduled" title="${dayScheduledFiltered.length} scheduled"></div>`);
     }
-    
-    const sentLogs = dayLogs.filter(l => l.success);
-    const failedLogs = dayLogs.filter(l => !l.success);
-    
     if (sentLogs.length > 0) {
-      dotsHtml += `<div class="cal-dot cal-dot-sent"></div>`;
+      dots.push(`<div class="cal-dot cal-dot-sent" title="${sentLogs.length} sent"></div>`);
     }
     if (failedLogs.length > 0) {
-      dotsHtml += `<div class="cal-dot cal-dot-failed"></div>`;
+      dots.push(`<div class="cal-dot cal-dot-failed" title="${failedLogs.length} failed"></div>`);
     }
+    dotsHtml = dots.join('');
     
-    // Add Labels (visible on desktop)
+    // Display the task titles for scheduled tasks
+    const schedTaskNames = [...new Set(dayScheduledFiltered.map(s => s.name))];
     schedTaskNames.forEach(name => {
       labelsHtml += `<div class="cal-day-label cal-day-label-scheduled">${escapeHtml(name)}</div>`;
     });
-    
-    if (sentLogs.length > 0) {
-      labelsHtml += `<div class="cal-day-label cal-day-label-sent">${sentLogs.length} Sent</div>`;
-    }
-    if (failedLogs.length > 0) {
-      labelsHtml += `<div class="cal-day-label cal-day-label-failed">${failedLogs.length} Failed</div>`;
-    }
     
     cell.innerHTML = `
       <div class="cal-day-number">${day}</div>
@@ -973,8 +1061,12 @@ function showDayDetail(day, data) {
   const dayLogs = (data.logs && data.logs[day]) || [];
   const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
   
-  if (dayLogs.length === 0 && dayScheduled.length === 0) {
-    content.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs or scheduled tasks for this day.</p>';
+  const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
+  const dayLogsFiltered = hideDaily ? dayLogs.filter(l => !isDailySchedule(l)) : dayLogs;
+  const dayScheduledFiltered = hideDaily ? dayScheduled.filter(s => !isDailySchedule(s)) : dayScheduled;
+  
+  if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0) {
+    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs or scheduled tasks for this day${hideDaily ? ' (daily schedules hidden)' : ''}.</p>`;
     detailPanel.style.display = 'block';
     return;
   }
@@ -982,16 +1074,16 @@ function showDayDetail(day, data) {
   let html = '';
   
   // 1. Scheduled Tasks Section
-  if (dayScheduled.length > 0) {
+  if (dayScheduledFiltered.length > 0) {
     html += `
       <div class="cal-detail-section">
         <h4 class="cal-detail-section-title">Scheduled Tasks</h4>
     `;
     
     // Sort scheduled runs chronologically
-    dayScheduled.sort((a, b) => a.fire_at - b.fire_at);
+    dayScheduledFiltered.sort((a, b) => a.fire_at - b.fire_at);
     
-    dayScheduled.forEach(item => {
+    dayScheduledFiltered.forEach(item => {
       const timeStr = new Date(item.fire_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const statusBadge = item.status === 'Paused'
         ? '<span class="badge badge-secondary" style="font-size: 0.7rem; padding: 2px 6px;">Paused</span>'
@@ -1013,20 +1105,20 @@ function showDayDetail(day, data) {
   }
   
   // 2. Sent Logs Section
-  if (dayLogs.length > 0) {
+  if (dayLogsFiltered.length > 0) {
     html += `
       <div class="cal-detail-section" style="margin-top: 1.5rem;">
         <h4 class="cal-detail-section-title">Activity Logs</h4>
     `;
     
     // Sort logs chronologically
-    dayLogs.sort((a, b) => a.sent_at - b.sent_at);
+    dayLogsFiltered.sort((a, b) => a.sent_at - b.sent_at);
     
-    dayLogs.forEach(log => {
+    dayLogsFiltered.forEach(log => {
       const timeStr = new Date(log.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const successBadge = log.success
-        ? '<span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px;">✓ Sent</span>'
-        : `<span class="badge badge-danger" style="font-size: 0.7rem; padding: 2px 6px;" title="${escapeHtml(log.error_msg || '')}">✗ Failed</span>`;
+        ? '<span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><polyline points="20 6 9 17 4 12"></polyline></svg>Sent</span>'
+        : `<span class="badge badge-danger" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;" title="${escapeHtml(log.error_msg || '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Failed</span>`;
         
       html += `
         <div class="cal-detail-item">
@@ -1054,21 +1146,25 @@ function showDayDetail(day, data) {
 async function loadSettings() {
   await fetchCurrentUser();
   
-  document.getElementById('settingsSubtitle').innerHTML = `Signed in as <span style="color: var(--text); font-weight: 600;">${escapeHtml(currentUser.username)}</span>`;
+  const subtitleEl = document.getElementById('settingsSubtitle');
+  if (subtitleEl) {
+    subtitleEl.innerHTML = `Signed in as <span style="color: var(--text); font-weight: 600;">${escapeHtml(currentUser.username)}</span>`;
+  }
   
-  const notBound = document.getElementById('waStatusNotBound');
-  const bound = document.getElementById('waStatusBound');
+  const connectedEl = document.getElementById('waStatusConnected');
+  const disconnectedEl = document.getElementById('waStatusDisconnected');
+  const boundChatIdEl = document.getElementById('settingsBoundChatId');
+  const manualWaNumberEl = document.getElementById('manualWaNumber');
   
   if (currentUser.chatId) {
-    notBound.style.display = 'none';
-    bound.style.display = 'block';
-    document.getElementById('settingsBoundChatId').textContent = currentUser.chatId;
-    document.getElementById('manualWaNumber').value = currentUser.chatId;
+    if (disconnectedEl) disconnectedEl.style.display = 'none';
+    if (connectedEl) connectedEl.style.display = 'block';
+    if (boundChatIdEl) boundChatIdEl.textContent = currentUser.chatId;
+    if (manualWaNumberEl) manualWaNumberEl.value = currentUser.chatId;
   } else {
-    bound.style.display = 'none';
-    notBound.style.display = 'block';
-    document.getElementById('settingsVerificationCode').textContent = formatVerifCode(currentUser.verificationCode);
-    document.getElementById('manualWaNumber').value = '';
+    if (connectedEl) connectedEl.style.display = 'none';
+    if (disconnectedEl) disconnectedEl.style.display = 'block';
+    if (manualWaNumberEl) manualWaNumberEl.value = '';
   }
 }
 
@@ -1106,23 +1202,23 @@ function renderUsersList(users) {
       
     let waStatus;
     if (u.chatId) {
-      waStatus = `<span class="verif-status-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> Verified (${escapeHtml(u.chatId)})</span>`;
-    } else if (u.verificationCode) {
-      waStatus = `<span class="badge badge-warning" style="font-family: monospace;" title="Pending">${formatVerifCode(u.verificationCode)}</span>`;
+      waStatus = `<span class="verif-status-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg> ${escapeHtml(u.chatId)}</span>`;
     } else {
-      waStatus = '<span style="color: var(--text-muted);">—</span>';
+      waStatus = '<span style="color: var(--text-muted);">Not configured</span>';
     }
 
     const deleteBtn = u.id === currentUser.id ? '' : `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}', '${escapeHtml(u.username)}')">Delete</button>`;
       
     tr.innerHTML = `
-      <td style="font-weight: 600;">${escapeHtml(u.username)}</td>
+      <td class="td-name">${escapeHtml(u.username)}</td>
       <td>${roleBadge}</td>
-      <td>${waStatus}</td>
-      <td style="color: var(--text-muted); font-size: 0.85rem;">${new Date(u.createdAt).toLocaleDateString()}</td>
-      <td style="display: flex; gap: 0.5rem;">
-        <button class="btn btn-secondary btn-sm" onclick="openEditUserDialog('${u.id}')">Edit</button>
-        ${deleteBtn}
+      <td class="td-mono">${waStatus}</td>
+      <td class="td-meta">${new Date(u.createdAt).toLocaleDateString()}</td>
+      <td>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditUserDialog('${u.id}')">Edit</button>
+          ${deleteBtn}
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1158,7 +1254,6 @@ function openEditUserDialog(userId) {
   document.getElementById('editUserPassword').value = '';
   document.getElementById('editUserIsAdmin').checked = !!user.isAdmin;
   document.getElementById('editUserChatId').value = user.chatId || '';
-  document.getElementById('editUserResetVerification').checked = false;
   
   document.getElementById('editUserDialog').showModal();
 }

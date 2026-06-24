@@ -34,8 +34,7 @@ export function calculateNextRun(taskType, scheduleSpec, fromTime = Date.now()) 
 
   if (taskType === 'OneTime') {
     if (!spec.run_at) return null;
-    const runAtMs = new Date(spec.run_at).getTime();
-    return runAtMs > fromTime ? runAtMs : null;
+    return new Date(spec.run_at).getTime();
   }
 
   if (taskType === 'Interval') {
