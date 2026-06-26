@@ -866,6 +866,20 @@ function renderLogsList(logs) {
     const ownerText = currentUser.isAdmin
       ? ` • by ${escapeHtml(log.owner_username || `#${log.owner_user_id}`)}`
       : '';
+
+    // Build error/response detail line
+    let detailHtml = '';
+    if (!log.success && log.error_msg) {
+      detailHtml = `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 4px; word-break: break-all;">✗ ${escapeHtml(log.error_msg)}</div>`;
+    }
+    if (log.api_response) {
+      let parsedRes = null;
+      try { parsedRes = JSON.parse(log.api_response); } catch (e) {}
+      if (parsedRes) {
+        const resPreview = JSON.stringify(parsedRes);
+        detailHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px; font-family: 'SF Mono', Monaco, monospace; word-break: break-all; opacity: 0.7;">API: ${escapeHtml(resPreview.length > 120 ? resPreview.substring(0, 120) + '…' : resPreview)}</div>`;
+      }
+    }
       
     tr.innerHTML = `
       <td>
@@ -881,6 +895,7 @@ function renderLogsList(logs) {
           ${badge}
         </div>
         <div class="td-meta" style="margin-top: 0.25rem;">${new Date(log.sent_at).toLocaleString()}</div>
+        ${detailHtml}
       </td>
     `;
     tbody.appendChild(tr);
@@ -1119,6 +1134,20 @@ function showDayDetail(day, data) {
       const successBadge = log.success
         ? '<span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><polyline points="20 6 9 17 4 12"></polyline></svg>Sent</span>'
         : `<span class="badge badge-danger" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;" title="${escapeHtml(log.error_msg || '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Failed</span>`;
+
+      // Build detail lines for error/API response
+      let detailHtml = '';
+      if (!log.success && log.error_msg) {
+        detailHtml += `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 2px;">Error: ${escapeHtml(log.error_msg)}</div>`;
+      }
+      if (log.api_response) {
+        let parsedRes = null;
+        try { parsedRes = JSON.parse(log.api_response); } catch (e) {}
+        if (parsedRes) {
+          const resPreview = JSON.stringify(parsedRes);
+          detailHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; font-family: 'SF Mono', Monaco, monospace; word-break: break-all; opacity: 0.7;">API: ${escapeHtml(resPreview.length > 100 ? resPreview.substring(0, 100) + '…' : resPreview)}</div>`;
+        }
+      }
         
       html += `
         <div class="cal-detail-item">
@@ -1126,7 +1155,7 @@ function showDayDetail(day, data) {
           <div class="cal-detail-item-info">
             <div class="cal-detail-item-name">${escapeHtml(log.task_name)}</div>
             <div class="cal-detail-item-meta" title="${escapeHtml(log.message)}">${timeStr} to ${escapeHtml(log.target_jid)}: "${escapeHtml(log.message)}"</div>
-            ${!log.success && log.error_msg ? `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 2px;">Error: ${escapeHtml(log.error_msg)}</div>` : ''}
+            ${detailHtml}
           </div>
           <div>${successBadge}</div>
         </div>

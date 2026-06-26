@@ -10,19 +10,43 @@ export async function sendWhatsAppMessage(number, message) {
 
   const apiUrl = process.env.WHATSAPP_API_URL || 'https://deswa.io7.my/api/external/send-message';
 
-  const res = await fetch(apiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ number, message })
-  });
+  console.log(`[WA-API] Sending to ${number}: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
 
-  const data = await res.json();
+  let res;
+  let rawBody;
+  try {
+    res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number, message })
+    });
+    rawBody = await res.text();
+  } catch (fetchErr) {
+    console.error(`[WA-API] Network/fetch error:`, fetchErr.message);
+    throw new Error(`Network error: ${fetchErr.message}`);
+  }
 
-  if (!res.ok || (data.success !== true && !data.messageId)) {
+  let data;
+  try {
+    data = JSON.parse(rawBody);
+  } catch (parseErr) {
+    console.error(`[WA-API] Non-JSON response (HTTP ${res.status}):`, rawBody.substring(0, 500));
+    throw new Error(`API returned non-JSON (HTTP ${res.status}): ${rawBody.substring(0, 200)}`);
+  }
+
+  console.log(`[WA-API] Response (HTTP ${res.status}):`, JSON.stringify(data));
+
+  if (!res.ok) {
     const errMsg = data.error || data.details || data.message || `HTTP ${res.status}`;
     throw new Error(errMsg);
   }
 
+  if (data.success !== true && !data.messageId) {
+    const errMsg = data.error || data.details || data.message || 'API did not confirm success';
+    throw new Error(errMsg);
+  }
+
+  // Return the full API response data for logging
   return data;
 }
 
@@ -72,7 +96,7 @@ async function tick() {
   });
 
   for (const task of firingTasks) {
-    console.log(`[Scheduler] Firing task "${task.name}" (${task._id})`);
+    console.log(`[Scheduler] Firing task "${task.name}" (${task._id}) [${task.task_type}]`);
 
     // Mark as Firing
     task.status = 'Firing';
@@ -86,7 +110,7 @@ async function tick() {
     // 1. Send personal message to owner's WhatsApp JID
     if (task.target_wa_chat_id && task.message_template) {
       try {
-        await sendWhatsAppMessage(task.target_wa_chat_id, task.message_template);
+        const apiRes = await sendWhatsAppMessage(task.target_wa_chat_id, task.message_template);
         console.log(`[Scheduler]   ✓ Personal msg sent to ${task.target_wa_chat_id}`);
         await SendLog.create({
           task_id: task._id,
@@ -95,6 +119,7 @@ async function tick() {
           target_jid: task.target_wa_chat_id,
           message: task.message_template,
           success: true,
+          api_response: JSON.stringify(apiRes),
           sent_at: now
         });
       } catch (err) {
@@ -119,7 +144,7 @@ async function tick() {
       const trimJid = (jid || '').trim();
       if (!trimJid) continue;
       try {
-        await sendWhatsAppMessage(trimJid, broadcastMsg);
+        const apiRes = await sendWhatsAppMessage(trimJid, broadcastMsg);
         console.log(`[Scheduler]   ✓ Broadcast sent to ${trimJid}`);
         await SendLog.create({
           task_id: task._id,
@@ -128,6 +153,7 @@ async function tick() {
           target_jid: trimJid,
           message: broadcastMsg,
           success: true,
+          api_response: JSON.stringify(apiRes),
           sent_at: now
         });
       } catch (err) {
@@ -150,9 +176,9 @@ async function tick() {
     let nextStatus = 'Active';
     if (task.task_type === 'OneTime') {
       nextStatus = allSucceeded ? 'Completed' : 'Failed';
-    } else if (!allSucceeded) {
-      nextStatus = 'Failed';
     }
+    // For Cron/Interval: always stay Active and reschedule,
+    // even if a send failed (transient failures shouldn't kill recurring tasks)
 
     const nextRun = (nextStatus === 'Active')
       ? calculateNextRun(task.task_type, task.schedule_spec, now)
@@ -163,6 +189,9 @@ async function tick() {
     task.updated_at = now;
     await task.save();
 
+    if (!allSucceeded && task.task_type !== 'OneTime') {
+      console.warn(`[Scheduler] Task "${task.name}" had send failures but will retry on next schedule.`);
+    }
     console.log(`[Scheduler] Task "${task.name}" done → ${nextStatus}. Next: ${nextRun ? new Date(nextRun).toISOString() : 'None'}`);
   }
 }

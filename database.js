@@ -71,6 +71,7 @@ const sendLogSchema = new mongoose.Schema({
   message:       { type: String, required: true },
   success:       { type: Boolean, default: false },
   error_msg:     { type: String, default: null },
+  api_response:  { type: String, default: null },
   sent_at:       { type: Number, required: true, index: true }
 });
 sendLogSchema.set('toJSON', { virtuals: true });
