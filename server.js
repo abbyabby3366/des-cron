@@ -422,21 +422,35 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
 
     const filter = req.user.is_admin ? {} : { owner_user_id: req.user._id };
 
-    // 1. Get past logs for this month
+    // 1. Get past logs for this month and all tasks in parallel
     const logFilter = {
       ...filter,
       sent_at: { $gte: monthStart, $lt: monthEnd }
     };
-    const logs = await SendLog.find(logFilter).sort({ sent_at: 1 }).lean();
 
-    // Fetch all user's tasks to map log metadata
-    const tasksForMap = await Task.find(filter).lean();
+    const [logs, allTasks] = await Promise.all([
+      SendLog.find(logFilter).sort({ sent_at: 1 }).lean(),
+      Task.find(filter).lean()
+    ]);
+
+    // Map log metadata and categorize tasks in-memory
     const taskMap = {};
-    for (const t of tasksForMap) {
+    const activeTasks = [];
+    const completedTasks = [];
+
+    for (const t of allTasks) {
       taskMap[t._id.toString()] = {
         task_type: t.task_type,
         schedule_spec: t.schedule_spec
       };
+
+      if (['Active', 'Paused', 'Firing'].includes(t.status)) {
+        activeTasks.push(t);
+      } else if (['Completed', 'Failed'].includes(t.status)) {
+        if (t.last_run_at && t.last_run_at >= monthStart && t.last_run_at < monthEnd) {
+          completedTasks.push(t);
+        }
+      }
     }
 
     // Group logs by day
@@ -460,15 +474,10 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
       });
     }
 
-    // 2. Get all active/paused tasks and compute which days they fire in this month
-    const tasks = await Task.find({
-      ...filter,
-      status: { $in: ['Active', 'Paused', 'Firing'] }
-    }).lean();
-
+    // 2. Compute which days active/paused tasks fire in this month
     const scheduledByDay = {};
 
-    for (const task of tasks) {
+    for (const task of activeTasks) {
       const spec = task.schedule_spec || {};
 
       if (task.task_type === 'OneTime') {
@@ -559,13 +568,7 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
       }
     }
 
-    // 3. Get completed/failed one-time tasks that ran in this month (from logs or last_run_at)
-    const completedTasks = await Task.find({
-      ...filter,
-      status: { $in: ['Completed', 'Failed'] },
-      last_run_at: { $gte: monthStart, $lt: monthEnd }
-    }).lean();
-
+    // 3. Process completed/failed one-time tasks that ran in this month
     for (const task of completedTasks) {
       if (task.last_run_at) {
         const d = new Date(task.last_run_at);

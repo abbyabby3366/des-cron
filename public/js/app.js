@@ -1059,6 +1059,17 @@ function renderLogsList(logs) {
 // ---------------------------------------------------------------
 async function refreshCalendar() {
   if (!apiToken) return;
+  const grid = document.getElementById('calendarGrid');
+  const prevBtn = document.getElementById('calPrevBtn');
+  const nextBtn = document.getElementById('calNextBtn');
+  const todayBtn = document.getElementById('calTodayBtn');
+
+  // Show loading state
+  if (grid) grid.style.opacity = '0.5';
+  if (prevBtn) prevBtn.disabled = true;
+  if (nextBtn) nextBtn.disabled = true;
+  if (todayBtn) todayBtn.disabled = true;
+
   try {
     const res = await fetch(`/api/calendar?year=${calCurrentYear}&month=${calCurrentMonth}`, {
       headers: { 'Authorization': `Bearer ${apiToken}` }
@@ -1068,6 +1079,12 @@ async function refreshCalendar() {
     renderCalendar(calendarData);
   } catch (e) {
     console.error('Error refreshing calendar:', e);
+  } finally {
+    // Hide loading state
+    if (grid) grid.style.opacity = '1';
+    if (prevBtn) prevBtn.disabled = false;
+    if (nextBtn) nextBtn.disabled = false;
+    if (todayBtn) todayBtn.disabled = false;
   }
 }
 
