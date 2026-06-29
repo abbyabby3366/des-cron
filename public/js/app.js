@@ -12,6 +12,7 @@ let autoRefreshInterval = null;
 let calCurrentYear = new Date().getFullYear();
 let calCurrentMonth = new Date().getMonth() + 1;
 let calendarData = null;
+let calSelectTodayOnRender = false;
 
 // SHA-256 via Web Crypto API
 async function sha256Hex(message) {
@@ -305,15 +306,48 @@ function setupEventListeners() {
     }
   });
 
+  // Task filter change listener
+  const filterSelect = document.getElementById('taskTypeFilter');
+  if (filterSelect) {
+    filterSelect.addEventListener('change', () => {
+      applyTaskFilterAndRender();
+    });
+  }
+
   // Task form
   document.getElementById('taskForm').addEventListener('submit', handleTaskFormSubmit);
   document.getElementById('createNewTaskBtn').addEventListener('click', () => openTaskDialog());
 
 
   // Manual WhatsApp binding
+  const manualWaInput = document.getElementById('manualWaNumber');
+  const editWaBtn = document.getElementById('editWaBtn');
+  const saveWaBtn = document.getElementById('saveWaBtn');
+  const cancelWaBtn = document.getElementById('cancelWaBtn');
+
+  if (editWaBtn) {
+    editWaBtn.addEventListener('click', () => {
+      manualWaInput.disabled = false;
+      manualWaInput.focus();
+      editWaBtn.style.display = 'none';
+      saveWaBtn.style.display = 'inline-block';
+      cancelWaBtn.style.display = 'inline-block';
+    });
+  }
+
+  if (cancelWaBtn) {
+    cancelWaBtn.addEventListener('click', () => {
+      manualWaInput.disabled = true;
+      manualWaInput.value = currentUser.chatId || '';
+      editWaBtn.style.display = 'inline-block';
+      saveWaBtn.style.display = 'none';
+      cancelWaBtn.style.display = 'none';
+    });
+  }
+
   document.getElementById('manualWaForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const number = document.getElementById('manualWaNumber').value.trim();
+    const number = manualWaInput.value.trim();
     const alert = document.getElementById('settingsAlertContainer');
     alert.innerHTML = '';
     
@@ -367,6 +401,7 @@ function setupEventListeners() {
     const today = new Date();
     calCurrentYear = today.getFullYear();
     calCurrentMonth = today.getMonth() + 1;
+    calSelectTodayOnRender = true;
     refreshCalendar();
   });
 
@@ -550,16 +585,31 @@ async function refreshTasks(silent = false) {
     cachedTasks = tasks;
     toggleConnectionBanner(false);
     
-    const summaryText = document.getElementById('taskSummaryText');
-    summaryText.textContent = tasks.length === 0
-      ? 'No scheduled tasks'
-      : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'} scheduled`;
-    
-    renderTasksList(tasks);
+    applyTaskFilterAndRender();
   } catch (err) {
     console.error('Error refreshing tasks:', err);
     toggleConnectionBanner(true);
   }
+}
+
+function applyTaskFilterAndRender() {
+  const filterVal = document.getElementById('taskTypeFilter')?.value || 'all';
+  let filtered = cachedTasks;
+  if (filterVal !== 'all') {
+    filtered = cachedTasks.filter(t => t.task_type === filterVal);
+  }
+  
+  const summaryText = document.getElementById('taskSummaryText');
+  if (summaryText) {
+    if (cachedTasks.length === 0) {
+      summaryText.textContent = 'No scheduled tasks';
+    } else {
+      const typeLabel = filterVal === 'all' ? '' : ` (${filterVal})`;
+      summaryText.textContent = `${filtered.length} of ${cachedTasks.length} task${cachedTasks.length === 1 ? '' : 's'} shown${typeLabel}`;
+    }
+  }
+  
+  renderTasksList(filtered);
 }
 
 function renderTasksList(tasks) {
@@ -574,7 +624,14 @@ function renderTasksList(tasks) {
     if (tableContainer) tableContainer.style.display = 'none';
     if (emptyState) {
       emptyState.style.display = 'block';
-      emptyState.innerHTML = `
+      const hasAnyTasks = cachedTasks.length > 0;
+      emptyState.innerHTML = hasAnyTasks ? `
+        <div class="empty-state">
+          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <h4 class="empty-title">No matching tasks</h4>
+          <p class="empty-desc">Try changing the task type filter to view other tasks.</p>
+        </div>
+      ` : `
         <div class="empty-state">
           <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
           <h4 class="empty-title">No tasks scheduled yet</h4>
@@ -651,8 +708,12 @@ function renderTasksList(tasks) {
       <td>
         <div style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary);">${escapeHtml(schedDetail)}</div>
         <div class="td-meta" style="margin-top: 0.25rem; line-height: 1.3;">
-          <div>Last: ${lastRun}</div>
-          <div>Next: ${nextRun}</div>
+          ${task.task_type === 'OneTime'
+            ? (task.last_run_at
+              ? `<div>Sent: ${new Date(task.last_run_at).toLocaleString()}</div>`
+              : `<div>Scheduled for ${task.next_run_at ? new Date(task.next_run_at).toLocaleString() : '—'}</div>`)
+            : `<div>Last: ${lastRun}</div><div>Next: ${nextRun}</div>`
+          }
         </div>
       </td>
       <td>
@@ -848,12 +909,29 @@ async function refreshLogs() {
   }
 }
 
+window.toggleLogDetail = function(btn, logId) {
+  const container = document.getElementById(`log-detail-${logId}`);
+  if (container) {
+    const isHidden = container.style.display === 'none';
+    container.style.display = isHidden ? 'block' : 'none';
+    btn.textContent = isHidden ? 'Hide Details' : 'View Details';
+    // Style toggle
+    if (isHidden) {
+      btn.classList.add('btn-primary');
+      btn.classList.remove('btn-secondary');
+    } else {
+      btn.classList.add('btn-secondary');
+      btn.classList.remove('btn-primary');
+    }
+  }
+};
+
 function renderLogsList(logs) {
   const tbody = document.getElementById('logsTableBody');
   tbody.innerHTML = '';
 
   if (logs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 3rem;">No logs yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">No logs yet.</td></tr>`;
     return;
   }
 
@@ -868,16 +946,24 @@ function renderLogsList(logs) {
       : '';
 
     // Build error/response detail line
-    let detailHtml = '';
+    let errorDetailHtml = '';
     if (!log.success && log.error_msg) {
-      detailHtml = `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 4px; word-break: break-all;">✗ ${escapeHtml(log.error_msg)}</div>`;
+      errorDetailHtml = `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 4px; word-break: break-all;">✗ ${escapeHtml(log.error_msg)}</div>`;
     }
+
+    let apiColumnHtml = '<span style="color: var(--text-muted); font-size: 0.85rem;">—</span>';
     if (log.api_response) {
       let parsedRes = null;
       try { parsedRes = JSON.parse(log.api_response); } catch (e) {}
       if (parsedRes) {
-        const resPreview = JSON.stringify(parsedRes);
-        detailHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 3px; font-family: 'SF Mono', Monaco, monospace; word-break: break-all; opacity: 0.7;">API: ${escapeHtml(resPreview.length > 120 ? resPreview.substring(0, 120) + '…' : resPreview)}</div>`;
+        const prettyJson = JSON.stringify(parsedRes, null, 2);
+        const logId = log.id || Math.random().toString(36).substring(2, 9);
+        apiColumnHtml = `
+          <button class="btn btn-secondary btn-sm" onclick="toggleLogDetail(this, '${logId}')">View Details</button>
+          <div id="log-detail-${logId}" style="display: none; margin-top: 0.5rem; text-align: left;">
+            <pre style="white-space: pre-wrap; word-break: break-all; font-family: monospace; font-size: 0.7rem; background: rgba(0, 0, 0, 0.25); padding: 0.5rem; border-radius: 4px; border: 1px solid var(--border); max-width: 250px; max-height: 180px; overflow-y: auto; color: var(--text-muted);">${escapeHtml(prettyJson)}</pre>
+          </div>
+        `;
       }
     }
       
@@ -895,7 +981,10 @@ function renderLogsList(logs) {
           ${badge}
         </div>
         <div class="td-meta" style="margin-top: 0.25rem;">${new Date(log.sent_at).toLocaleString()}</div>
-        ${detailHtml}
+        ${errorDetailHtml}
+      </td>
+      <td>
+        ${apiColumnHtml}
       </td>
     `;
     tbody.appendChild(tr);
@@ -997,6 +1086,10 @@ function renderCalendar(data) {
     cell.className = 'cal-day';
     if (isCurrentMonth && day === todayDay) {
       cell.classList.add('cal-day-today');
+      if (calSelectTodayOnRender) {
+        cell.classList.add('cal-day-selected');
+        showDayDetail(day, data);
+      }
     }
     
     // Check if we have logs or scheduled tasks for this day
@@ -1058,6 +1151,8 @@ function renderCalendar(data) {
     cell.innerHTML = `<div class="cal-day-number">${day}</div>`;
     grid.appendChild(cell);
   }
+  
+  calSelectTodayOnRender = false;
 }
 
 function showDayDetail(day, data) {
@@ -1195,6 +1290,15 @@ async function loadSettings() {
     if (disconnectedEl) disconnectedEl.style.display = 'block';
     if (manualWaNumberEl) manualWaNumberEl.value = '';
   }
+
+  // Revert UI to non-edit mode
+  if (manualWaNumberEl) manualWaNumberEl.disabled = true;
+  const editWaBtn = document.getElementById('editWaBtn');
+  const saveWaBtn = document.getElementById('saveWaBtn');
+  const cancelWaBtn = document.getElementById('cancelWaBtn');
+  if (editWaBtn) editWaBtn.style.display = 'inline-block';
+  if (saveWaBtn) saveWaBtn.style.display = 'none';
+  if (cancelWaBtn) cancelWaBtn.style.display = 'none';
 }
 
 // ---------------------------------------------------------------

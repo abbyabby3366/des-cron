@@ -34,8 +34,6 @@ async function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
-  console.log(`[Auth Middleware] Request: ${req.method} ${req.url}, Token provided: ${token ? token.substring(0, 8) + '...' : 'NONE'}`);
-
   if (!token) {
     console.log('[Auth Middleware] Denied: Access token required');
     return res.status(401).json({ error: 'Access token required' });
@@ -144,7 +142,6 @@ app.put('/api/auth/profile', authenticateToken, async (req, res) => {
 
   try {
     await User.updateOne({ _id: req.user._id }, { chat_id: chatId, verification_code: null });
-    await Task.updateMany({ owner_user_id: req.user._id }, { target_wa_chat_id: chatId });
     res.json({ success: true, chatId });
   } catch (err) {
     console.error('Update profile error:', err);

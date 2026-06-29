@@ -315,6 +315,14 @@ body {
   box-shadow: none !important;
 }
 
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(100%);
+}
+
 .btn-sm {
   padding: 0.3rem 0.6rem;
   font-size: 0.75rem;
@@ -1462,4 +1470,51 @@ dialog::backdrop {
   gap: 0.4rem;
   animation: fadeIn 0.2s ease-out;
 }
+
+/* WhatsApp input styling with icon */
+.input-with-icon-wrapper {
+  position: relative;
+}
+
+.input-with-icon-wrapper .input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.input-with-icon-wrapper .input-icon img {
+  width: 18px;
+  height: 18px;
+  opacity: 0.85;
+}
+
+.input-with-icon-wrapper .input {
+  padding-left: 2.5rem;
+  height: 44px;
+  font-size: 0.95rem;
+  width: 100%;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.success-dot {
+  background-color: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+.warning-dot {
+  background-color: var(--warning);
+  box-shadow: 0 0 8px var(--warning);
+}
+
 
