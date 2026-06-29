@@ -13,6 +13,8 @@ let calCurrentYear = new Date().getFullYear();
 let calCurrentMonth = new Date().getMonth() + 1;
 let calendarData = null;
 let calSelectTodayOnRender = false;
+let currentTaskFilter = 'all';
+let taskSearchQuery = '';
 
 // SHA-256 via Web Crypto API
 async function sha256Hex(message) {
@@ -308,10 +310,21 @@ function setupEventListeners() {
     }
   });
 
-  // Task filter change listener
-  const filterSelect = document.getElementById('taskTypeFilter');
-  if (filterSelect) {
-    filterSelect.addEventListener('change', () => {
+  // Task filter tabs change listener
+  document.querySelectorAll('#taskTypeFilterTabs .filter-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      document.querySelectorAll('#taskTypeFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentTaskFilter = tab.getAttribute('data-value');
+      applyTaskFilterAndRender();
+    });
+  });
+
+  // Task search query listener
+  const searchInput = document.getElementById('taskSearchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      taskSearchQuery = e.target.value.toLowerCase().trim();
       applyTaskFilterAndRender();
     });
   }
@@ -407,22 +420,25 @@ function setupEventListeners() {
     refreshCalendar();
   });
 
-  // Calendar Daily Toggle
-  const toggleDailyBtn = document.getElementById('calToggleDailyBtn');
-  if (toggleDailyBtn) {
-    const initialHide = localStorage.getItem('cal_hide_daily') === 'true';
-    updateToggleDailyBtnState(initialHide);
+  // Calendar Toggles: daily, weekly, monthly, yearly
+  ['daily', 'weekly', 'monthly', 'yearly'].forEach(type => {
+    const capType = type.charAt(0).toUpperCase() + type.slice(1);
+    const toggleBtn = document.getElementById(`calToggle${capType}Btn`);
+    if (toggleBtn) {
+      const initialHide = localStorage.getItem(`cal_hide_${type}`) === 'true';
+      updateToggleBtnState(type, initialHide);
 
-    toggleDailyBtn.addEventListener('click', () => {
-      const currentHide = localStorage.getItem('cal_hide_daily') === 'true';
-      const newHide = !currentHide;
-      localStorage.setItem('cal_hide_daily', newHide);
-      updateToggleDailyBtnState(newHide);
-      if (calendarData) {
-        renderCalendar(calendarData);
-      }
-    });
-  }
+      toggleBtn.addEventListener('click', () => {
+        const currentHide = localStorage.getItem(`cal_hide_${type}`) === 'true';
+        const newHide = !currentHide;
+        localStorage.setItem(`cal_hide_${type}`, newHide);
+        updateToggleBtnState(type, newHide);
+        if (calendarData) {
+          renderCalendar(calendarData);
+        }
+      });
+    }
+  });
 
   // Create User
   document.getElementById('createNewUserBtn').addEventListener('click', () => {
@@ -619,10 +635,30 @@ async function refreshTasks(silent = false) {
 }
 
 function applyTaskFilterAndRender() {
-  const filterVal = document.getElementById('taskTypeFilter')?.value || 'all';
+  const filterVal = currentTaskFilter;
   let filtered = cachedTasks;
   if (filterVal !== 'all') {
-    filtered = cachedTasks.filter(t => t.task_type === filterVal);
+    if (filterVal === 'OneTime') {
+      filtered = cachedTasks.filter(t => t.task_type === 'OneTime');
+    } else if (filterVal === 'daily') {
+      filtered = cachedTasks.filter(t => isDailySchedule(t));
+    } else if (filterVal === 'weekly') {
+      filtered = cachedTasks.filter(t => isWeeklySchedule(t));
+    } else if (filterVal === 'monthly') {
+      filtered = cachedTasks.filter(t => isMonthlySchedule(t));
+    } else if (filterVal === 'yearly') {
+      filtered = cachedTasks.filter(t => isYearlySchedule(t));
+    }
+  }
+  
+  if (taskSearchQuery) {
+    filtered = filtered.filter(t => {
+      const nameMatch = t.name && t.name.toLowerCase().includes(taskSearchQuery);
+      const msgMatch = t.message_template && t.message_template.toLowerCase().includes(taskSearchQuery);
+      const targetMatch = t.target_wa_chat_id && t.target_wa_chat_id.toLowerCase().includes(taskSearchQuery);
+      const ownerMatch = t.owner_username && t.owner_username.toLowerCase().includes(taskSearchQuery);
+      return nameMatch || msgMatch || targetMatch || ownerMatch;
+    });
   }
   
   const summaryText = document.getElementById('taskSummaryText');
@@ -631,7 +667,8 @@ function applyTaskFilterAndRender() {
       summaryText.textContent = 'No scheduled tasks';
     } else {
       const typeLabel = filterVal === 'all' ? '' : ` (${filterVal})`;
-      summaryText.textContent = `${filtered.length} of ${cachedTasks.length} task${cachedTasks.length === 1 ? '' : 's'} shown${typeLabel}`;
+      const searchLabel = taskSearchQuery ? ` matching "${taskSearchQuery}"` : '';
+      summaryText.textContent = `${filtered.length} of ${cachedTasks.length} task${cachedTasks.length === 1 ? '' : 's'} shown${typeLabel}${searchLabel}`;
     }
   }
   
@@ -674,8 +711,8 @@ function renderTasksList(tasks) {
   
   // Build header
   const headerHtml = `
-    <th>Task Details</th>
-    <th>Message</th>
+    <th style="width: 22%;">Task Details</th>
+    <th style="width: 35%;">Message</th>
     <th>Schedule &amp; Runs</th>
     <th style="text-align: right;">Actions</th>
   `;
@@ -1034,42 +1071,123 @@ async function refreshCalendar() {
   }
 }
 
+function getScheduleInfo(item) {
+  const spec = item.scheduleSpec || item.schedule_spec || {};
+  const interval_secs = item.interval_secs || spec.interval_secs;
+  const expression = item.expression || spec.expression;
+  return { interval_secs, expression };
+}
+
 function isDailySchedule(item) {
   if (item.task_type === 'Interval') {
-    return item.interval_secs && item.interval_secs <= 86400;
+    const { interval_secs } = getScheduleInfo(item);
+    return interval_secs && interval_secs <= 86400;
   }
-  if (item.task_type === 'Cron' && item.expression) {
-    const parts = item.expression.trim().split(/\s+/);
-    if (parts.length >= 5) {
-      const dom = parts[2];
-      const dow = parts[4];
-      return dom === '*' && (dow === '*' || dow === '?');
+  if (item.task_type === 'Cron') {
+    const { expression } = getScheduleInfo(item);
+    if (expression) {
+      const parts = expression.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const dom = parts[2];
+        const dow = parts[4];
+        return dom === '*' && (dow === '*' || dow === '?');
+      }
     }
   }
   return false;
 }
 
-function updateToggleDailyBtnState(hideDaily) {
-  const btn = document.getElementById('calToggleDailyBtn');
-  const text = document.getElementById('calToggleDailyText');
-  const icon = document.getElementById('calToggleDailyIcon');
+function isWeeklySchedule(item) {
+  if (item.task_type === 'Interval') {
+    const { interval_secs } = getScheduleInfo(item);
+    return interval_secs && interval_secs > 86400 && interval_secs <= 604800;
+  }
+  if (item.task_type === 'Cron') {
+    const { expression } = getScheduleInfo(item);
+    if (expression) {
+      const parts = expression.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const dom = parts[2];
+        const dow = parts[4];
+        return dom === '*' && dow !== '*' && dow !== '?';
+      }
+    }
+  }
+  return false;
+}
+
+function isMonthlySchedule(item) {
+  if (item.task_type === 'Interval') {
+    const { interval_secs } = getScheduleInfo(item);
+    return interval_secs && interval_secs > 604800 && interval_secs <= 2678400;
+  }
+  if (item.task_type === 'Cron') {
+    const { expression } = getScheduleInfo(item);
+    if (expression) {
+      const parts = expression.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const dom = parts[2];
+        const month = parts[3];
+        return dom !== '*' && dom !== '?' && month === '*';
+      }
+    }
+  }
+  return false;
+}
+
+function isYearlySchedule(item) {
+  if (item.task_type === 'Interval') {
+    const { interval_secs } = getScheduleInfo(item);
+    return interval_secs && interval_secs > 2678400;
+  }
+  if (item.task_type === 'Cron') {
+    const { expression } = getScheduleInfo(item);
+    if (expression) {
+      const parts = expression.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const dom = parts[2];
+        const month = parts[3];
+        return dom !== '*' && dom !== '?' && month !== '*';
+      }
+    }
+  }
+  return false;
+}
+
+function shouldShowItem(item, hideDaily, hideWeekly, hideMonthly, hideYearly) {
+  if (isDailySchedule(item)) return !hideDaily;
+  if (isWeeklySchedule(item)) return !hideWeekly;
+  if (isMonthlySchedule(item)) return !hideMonthly;
+  if (isYearlySchedule(item)) return !hideYearly;
+  return true;
+}
+
+function updateToggleBtnState(type, hide) {
+  const capType = type.charAt(0).toUpperCase() + type.slice(1);
+  const btn = document.getElementById(`calToggle${capType}Btn`);
+  const text = document.getElementById(`calToggle${capType}Text`);
+  const icon = document.getElementById(`calToggle${capType}Icon`);
   if (!btn || !text || !icon) return;
 
-  if (hideDaily) {
+  if (hide) {
     btn.classList.add('btn-toggle-active');
-    text.textContent = 'Show daily';
+    text.textContent = `Show ${type}`;
     icon.innerHTML = `
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
       <circle cx="12" cy="12" r="3"></circle>
     `;
   } else {
     btn.classList.remove('btn-toggle-active');
-    text.textContent = 'Hide daily';
+    text.textContent = `Hide ${type}`;
     icon.innerHTML = `
       <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
       <line x1="1" y1="1" x2="23" y2="23"></line>
     `;
   }
+}
+
+function updateToggleDailyBtnState(hideDaily) {
+  updateToggleBtnState('daily', hideDaily);
 }
 
 function renderCalendar(data) {
@@ -1105,6 +1223,9 @@ function renderCalendar(data) {
   const todayDay = today.getDate();
 
   const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
+  const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
+  const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
+  const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
 
   // Render current month days
   for (let day = 1; day <= totalDays; day++) {
@@ -1122,8 +1243,8 @@ function renderCalendar(data) {
     const dayLogs = (data.logs && data.logs[day]) || [];
     const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
     
-    const dayLogsFiltered = hideDaily ? dayLogs.filter(l => !isDailySchedule(l)) : dayLogs;
-    const dayScheduledFiltered = hideDaily ? dayScheduled.filter(s => !isDailySchedule(s)) : dayScheduled;
+    const dayLogsFiltered = dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
+    const dayScheduledFiltered = dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
     
     let dotsHtml = '';
     let labelsHtml = '';
@@ -1198,11 +1319,21 @@ function showDayDetail(day, data) {
   const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
   
   const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
-  const dayLogsFiltered = hideDaily ? dayLogs.filter(l => !isDailySchedule(l)) : dayLogs;
-  const dayScheduledFiltered = hideDaily ? dayScheduled.filter(s => !isDailySchedule(s)) : dayScheduled;
+  const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
+  const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
+  const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
+  
+  const dayLogsFiltered = dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
+  const dayScheduledFiltered = dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
   
   if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0) {
-    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs or scheduled tasks for this day${hideDaily ? ' (daily schedules hidden)' : ''}.</p>`;
+    const hiddenList = [];
+    if (hideDaily) hiddenList.push('daily');
+    if (hideWeekly) hiddenList.push('weekly');
+    if (hideMonthly) hiddenList.push('monthly');
+    if (hideYearly) hiddenList.push('yearly');
+    const hiddenStr = hiddenList.length > 0 ? ` (${hiddenList.join(', ')} schedules hidden)` : '';
+    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs or scheduled tasks for this day${hiddenStr}.</p>`;
     detailPanel.style.display = 'block';
     return;
   }

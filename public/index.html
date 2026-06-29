@@ -185,13 +185,22 @@
             <h1 class="page-title">Tasks</h1>
             <p class="page-subtitle" id="taskSummaryText">No scheduled tasks</p>
           </div>
-          <div style="display: flex; gap: 0.75rem; align-items: center;" id="taskHeaderActions">
-            <select id="taskTypeFilter" class="input" style="width: auto; padding: 0.45rem 2rem 0.45rem 0.65rem; margin: 0;">
-              <option value="all">All Types</option>
-              <option value="OneTime">One Time</option>
-              <option value="Interval">Interval</option>
-              <option value="Cron">Cron</option>
-            </select>
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;" id="taskHeaderActions">
+            <div class="search-wrapper" style="position: relative; flex-grow: 1; max-width: 320px;">
+              <input type="text" id="taskSearchInput" class="input" placeholder="Search tasks..." style="padding-left: 2.25rem; margin: 0;">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <div class="filter-tabs" id="taskTypeFilterTabs">
+              <button class="filter-tab active" data-value="all">All</button>
+              <button class="filter-tab" data-value="OneTime">One Time</button>
+              <button class="filter-tab" data-value="daily">Daily</button>
+              <button class="filter-tab" data-value="weekly">Weekly</button>
+              <button class="filter-tab" data-value="monthly">Monthly</button>
+              <button class="filter-tab" data-value="yearly">Yearly</button>
+            </div>
             <button id="createNewTaskBtn" class="btn btn-primary">
               New task
             </button>
@@ -274,6 +283,27 @@
                 <line x1="1" y1="1" x2="23" y2="23"></line>
               </svg>
               <span id="calToggleDailyText">Hide daily</span>
+            </button>
+            <button id="calToggleWeeklyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+              <svg id="calToggleWeeklyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+              <span id="calToggleWeeklyText">Hide weekly</span>
+            </button>
+            <button id="calToggleMonthlyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+              <svg id="calToggleMonthlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+              <span id="calToggleMonthlyText">Hide monthly</span>
+            </button>
+            <button id="calToggleYearlyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
+              <svg id="calToggleYearlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+              </svg>
+              <span id="calToggleYearlyText">Hide yearly</span>
             </button>
           </div>
         </div>

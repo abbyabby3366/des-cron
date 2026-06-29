@@ -462,10 +462,10 @@ tr:hover td {
 }
 
 .td-msg {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: 420px;
+  min-width: 200px;
+  white-space: normal;
+  word-break: break-word;
   font-size: 0.8rem !important;
   color: var(--text-secondary) !important;
 }
@@ -980,6 +980,7 @@ dialog::backdrop {
 .calendar-nav {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
@@ -988,6 +989,40 @@ dialog::backdrop {
   color: #a5b4fc !important;
   border-color: var(--accent) !important;
   box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+
+.filter-tabs {
+  display: flex;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  gap: 2px;
+}
+
+.filter-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.825rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  font-family: inherit;
+}
+
+.filter-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.filter-tab.active {
+  background: var(--surface-hover);
+  color: var(--text);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
 .calendar-month-label {
