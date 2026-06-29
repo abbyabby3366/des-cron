@@ -277,34 +277,78 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
             <button id="calTodayBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem;">Today</button>
-            <button id="calToggleDailyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-              <svg id="calToggleDailyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <span id="calToggleDailyText">Hide daily</span>
-            </button>
-            <button id="calToggleWeeklyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-              <svg id="calToggleWeeklyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <span id="calToggleWeeklyText">Hide weekly</span>
-            </button>
-            <button id="calToggleMonthlyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-              <svg id="calToggleMonthlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <span id="calToggleMonthlyText">Hide monthly</span>
-            </button>
-            <button id="calToggleYearlyBtn" class="btn btn-secondary btn-sm" style="margin-left: 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem;">
-              <svg id="calToggleYearlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                <line x1="1" y1="1" x2="23" y2="23"></line>
-              </svg>
-              <span id="calToggleYearlyText">Hide yearly</span>
-            </button>
+            <div class="calendar-filters-dropdown-container" style="margin-left: 0.5rem;">
+              <button class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 0.35rem; height: 32px;" aria-label="Visibility Filters">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                <span>Filters</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="calendar-filters-dropdown">
+                <button id="calToggleDailyBtn" class="btn btn-secondary btn-sm">
+                  <svg id="calToggleDailyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                  <span id="calToggleDailyText">Hide daily</span>
+                </button>
+                <button id="calToggleWeeklyBtn" class="btn btn-secondary btn-sm">
+                  <svg id="calToggleWeeklyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                  <span id="calToggleWeeklyText">Hide weekly</span>
+                </button>
+                <button id="calToggleMonthlyBtn" class="btn btn-secondary btn-sm">
+                  <svg id="calToggleMonthlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                  <span id="calToggleMonthlyText">Hide monthly</span>
+                </button>
+                <button id="calToggleYearlyBtn" class="btn btn-secondary btn-sm">
+                  <svg id="calToggleYearlyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                  <span id="calToggleYearlyText">Hide yearly</span>
+                </button>
+              </div>
+            </div>
+            
+            <div class="legend-tooltip-container" style="margin-left: 0.5rem;">
+              <button class="btn btn-secondary btn-sm" style="padding: 0.35rem 0.5rem; display: inline-flex; align-items: center; justify-content: center; height: 32px;" aria-label="Show Legend">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              </button>
+              <div class="legend-tooltip">
+                <span style="font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; font-size: 0.8rem; margin-bottom: 0.15rem; display: block;">Calendar Legend</span>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;">
+                  <div class="cal-dot cal-dot-scheduled" style="box-shadow: none;"></div>
+                  <span style="color: var(--text-secondary); font-size: 0.75rem;">Scheduled Run</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;">
+                  <div class="cal-dot cal-dot-sent"></div>
+                  <span style="color: var(--text-secondary); font-size: 0.75rem;">Sent Successfully</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;">
+                  <div class="cal-dot cal-dot-failed"></div>
+                  <span style="color: var(--text-secondary); font-size: 0.75rem;">Failed to Send</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;">
+                  <div class="cal-dot cal-dot-sent-encapsulated" style="box-shadow: none;"></div>
+                  <span style="color: var(--text-secondary); font-size: 0.75rem;">Scheduled &amp; Sent Success</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem;">
+                  <div class="cal-dot cal-dot-failed-encapsulated" style="box-shadow: none;"></div>
+                  <span style="color: var(--text-secondary); font-size: 0.75rem;">Scheduled &amp; Sent Failed</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

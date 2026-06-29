@@ -488,8 +488,9 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
         }
       } else if (task.task_type === 'Cron' && spec.expression) {
         try {
+          const startMs = Math.max(monthStart, task.created_at || 0, Date.now());
           const interval = cronParser.parseExpression(spec.expression, {
-            currentDate: new Date(monthStart),
+            currentDate: new Date(startMs),
             endDate: new Date(monthEnd - 1)
           });
           // Collect up to 100 fire times within the month
@@ -527,19 +528,17 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
         const intervalMs = intervalSecs * 1000;
         // Start from last_run or created_at, project forward
         let cursor = task.next_run_at || task.last_run_at || task.created_at;
-        // Project forward/backward to the start of the month using division (O(1))
-        if (cursor > monthStart) {
-          const diff = cursor - monthStart;
-          const steps = Math.floor(diff / intervalMs);
-          cursor -= steps * intervalMs;
-        } else {
-          const diff = monthStart - cursor;
+        const startMs = Math.max(monthStart, task.created_at || 0, Date.now());
+        
+        if (cursor < startMs) {
+          const diff = startMs - cursor;
           const steps = Math.ceil(diff / intervalMs);
           cursor += steps * intervalMs;
         }
+        
         let count = 0;
         while (cursor < monthEnd && count < 100) {
-          if (cursor >= monthStart) {
+          if (cursor >= startMs) {
             const d = new Date(cursor);
             const dayKey = d.getDate();
             if (!scheduledByDay[dayKey]) scheduledByDay[dayKey] = [];

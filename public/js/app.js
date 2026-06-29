@@ -1249,19 +1249,39 @@ function renderCalendar(data) {
     let dotsHtml = '';
     let labelsHtml = '';
     
-    const sentLogs = dayLogsFiltered.filter(l => l.success);
-    const failedLogs = dayLogsFiltered.filter(l => !l.success);
-    
     let dots = [];
-    if (dayScheduledFiltered.length > 0) {
-      dots.push(`<div class="cal-dot cal-dot-scheduled" title="${dayScheduledFiltered.length} scheduled"></div>`);
-    }
-    if (sentLogs.length > 0) {
-      dots.push(`<div class="cal-dot cal-dot-sent" title="${sentLogs.length} sent"></div>`);
-    }
-    if (failedLogs.length > 0) {
-      dots.push(`<div class="cal-dot cal-dot-failed" title="${failedLogs.length} failed"></div>`);
-    }
+    
+    // 1. Process each scheduled task on this day
+    const processedTaskNames = new Set();
+    dayScheduledFiltered.forEach(item => {
+      processedTaskNames.add(item.name);
+      
+      // Find logs for this task on this day
+      const taskLogs = dayLogsFiltered.filter(l => l.task_name === item.name);
+      if (taskLogs.length > 0) {
+        const hasSuccess = taskLogs.some(l => l.success);
+        if (hasSuccess) {
+          dots.push(`<div class="cal-dot cal-dot-sent-encapsulated" title="${escapeHtml(item.name)}: sent success"></div>`);
+        } else {
+          dots.push(`<div class="cal-dot cal-dot-failed-encapsulated" title="${escapeHtml(item.name)}: sent failed"></div>`);
+        }
+      } else {
+        dots.push(`<div class="cal-dot cal-dot-scheduled" title="${escapeHtml(item.name)}: scheduled"></div>`);
+      }
+    });
+    
+    // 2. Process any remaining logs that don't match any scheduled task
+    dayLogsFiltered.forEach(log => {
+      if (!processedTaskNames.has(log.task_name)) {
+        if (log.success) {
+          dots.push(`<div class="cal-dot cal-dot-sent" title="${escapeHtml(log.task_name)}: sent success"></div>`);
+        } else {
+          dots.push(`<div class="cal-dot cal-dot-failed" title="${escapeHtml(log.task_name)}: sent failed"></div>`);
+        }
+        processedTaskNames.add(log.task_name);
+      }
+    });
+    
     dotsHtml = dots.join('');
     
     // Display the task titles for scheduled tasks

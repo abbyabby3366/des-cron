@@ -1127,8 +1127,8 @@ dialog::backdrop {
 }
 
 .cal-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -1137,6 +1137,7 @@ dialog::backdrop {
 .cal-dot-scheduled {
   background: var(--accent);
   box-shadow: 0 0 4px rgba(99, 102, 241, 0.5);
+  border: 1.5px solid transparent;
 }
 
 .cal-dot-sent {
@@ -1147,6 +1148,18 @@ dialog::backdrop {
 
 .cal-dot-failed {
   background: transparent;
+  border: 1.5px solid var(--danger);
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+}
+
+.cal-dot-sent-encapsulated {
+  background: var(--accent);
+  border: 1.5px solid var(--success);
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+}
+
+.cal-dot-failed-encapsulated {
+  background: var(--accent);
   border: 1.5px solid var(--danger);
   box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
 }
@@ -1550,6 +1563,108 @@ dialog::backdrop {
 .warning-dot {
   background-color: var(--warning);
   box-shadow: 0 0 8px var(--warning);
+}
+
+.legend-tooltip-container {
+  position: relative;
+  display: inline-block;
+}
+
+.legend-tooltip {
+  visibility: hidden;
+  position: absolute;
+  top: 125%;
+  right: 0;
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.75rem;
+  width: max-content;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.2s, visibility 0.2s, transform 0.2s;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+
+.legend-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  right: 14px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent var(--surface) transparent;
+}
+
+.legend-tooltip-container:hover .legend-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.calendar-filters-dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+.calendar-filters-dropdown {
+  visibility: hidden;
+  position: absolute;
+  top: 125%;
+  right: 0;
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 0.35rem;
+  min-width: 145px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.2s, visibility 0.2s, transform 0.2s;
+  transform: translateY(-4px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.calendar-filters-dropdown::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  right: 24px;
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent var(--surface) transparent;
+}
+
+.calendar-filters-dropdown-container:hover .calendar-filters-dropdown {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.calendar-filters-dropdown button {
+  width: 100%;
+  justify-content: flex-start;
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.75rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  margin-left: 0 !important;
+}
+
+.calendar-filters-dropdown button:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+  border-color: transparent !important;
+}
+
+.calendar-filters-dropdown button.btn-toggle-active {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+  color: #a5b4fc !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 
