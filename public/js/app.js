@@ -170,6 +170,8 @@ function switchTab(tabId) {
   } else if (tabId === 'admin') {
     if (currentUser.isAdmin) refreshUsers();
     else switchTab('dashboard');
+  } else if (tabId === 'instructions') {
+    loadInstructions();
   }
   
   window.location.hash = tabId;
@@ -496,6 +498,30 @@ function setupEventListeners() {
       document.getElementById('editUserDialog').close();
     }
   });
+
+  // Copy AI Prompt template event listener
+  const copyBtn = document.getElementById('copyPromptBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const promptEl = document.getElementById('aiPromptTemplate');
+      if (promptEl) {
+        promptEl.select();
+        promptEl.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(promptEl.value);
+        
+        const spanEl = copyBtn.querySelector('span');
+        const origText = spanEl.textContent;
+        spanEl.textContent = 'Copied!';
+        copyBtn.style.borderColor = '#10b981';
+        copyBtn.style.color = '#10b981';
+        setTimeout(() => {
+          spanEl.textContent = origText;
+          copyBtn.style.borderColor = '';
+          copyBtn.style.color = '';
+        }, 2000);
+      }
+    });
+  }
 }
 
 // Dialog light-dismiss fallback
@@ -1299,6 +1325,30 @@ async function loadSettings() {
   if (editWaBtn) editWaBtn.style.display = 'inline-block';
   if (saveWaBtn) saveWaBtn.style.display = 'none';
   if (cancelWaBtn) cancelWaBtn.style.display = 'none';
+}
+
+async function loadInstructions() {
+  await fetchCurrentUser();
+  
+  const promptEl = document.getElementById('aiPromptTemplate');
+  if (promptEl) {
+    const defaultNumber = currentUser && currentUser.chatId ? currentUser.chatId : 'Not Configured';
+    const token = apiToken || 'Not Configured';
+    const apiUrl = window.location.origin + '/api/tasks';
+    
+    let rawTemplate = promptEl.getAttribute('data-raw-template');
+    if (!rawTemplate) {
+      rawTemplate = promptEl.value;
+      promptEl.setAttribute('data-raw-template', rawTemplate);
+    }
+    
+    let promptVal = rawTemplate;
+    promptVal = promptVal.split('[DEFAULT_NUMBER]').join(defaultNumber);
+    promptVal = promptVal.split('[API_TOKEN]').join(token);
+    promptVal = promptVal.split('[API_URL]').join(apiUrl);
+    
+    promptEl.value = promptVal;
+  }
 }
 
 // ---------------------------------------------------------------

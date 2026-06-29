@@ -134,6 +134,12 @@
                 Settings
               </a>
             </li>
+            <li>
+              <a class="nav-link" data-tab="instructions">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                AI Instructions
+              </a>
+            </li>
             <li id="adminNav" style="display: none;">
               <a class="nav-link" data-tab="admin">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -385,6 +391,99 @@
               <!-- Dynamically populated -->
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB: AI INSTRUCTIONS -->
+      <!-- ========================================== -->
+      <div id="instructionsTab" class="page-container">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">AI Agent Instructions</h1>
+            <p class="page-subtitle">Copy this prompt to instruct your AI assistant to manage tasks directly via code.</p>
+          </div>
+        </div>
+
+        <div class="panel" style="max-width: 800px; padding: 2rem;">
+          <h3 style="margin-top: 0; margin-bottom: 1rem; font-family: 'Outfit', sans-serif;">System Prompt for AI Coding Assistant</h3>
+          <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; line-height: 1.5;">
+            To have your AI assistant (like Gemini or Antigravity) create scheduled tasks using the application API, copy the system instructions below and paste them into the AI chat interface. The AI will interview you to gather the task details and then make the HTTP request.
+          </p>
+
+          <div style="position: relative; margin-bottom: 1.5rem;">
+            <textarea id="aiPromptTemplate" class="input input-mono" style="width: 100%; height: 380px; font-size: 0.82rem; line-height: 1.45; padding: 1rem; padding-right: 8rem; background-color: var(--bg-main); border: 1px solid var(--border); border-radius: 8px; resize: none; font-family: monospace;" readonly>
+# System Instructions: WhatsApp Scheduler Agent
+
+You are an agentic AI coder assisting the user with CronWA (a WhatsApp scheduling web application). Your goal is to help the user schedule tasks by directly making a local HTTP POST request to the API endpoint.
+
+## Step 1: Gather Task Information
+Before taking any action, ask the user these questions to define the scheduled task:
+1. What is the name/purpose of the task?
+2. What message(s) should be sent? (You can ask if they want a separate broadcast message template)
+3. Who is the recipient? (Ask if they want to send to the default number: [DEFAULT_NUMBER], or a different number)
+4. What is the schedule type? (One-time, Interval in seconds, or Cron expression)
+5. What is the specific timing? (e.g., date and time for One-time, interval duration, or cron spec)
+6. What is the current local time or timezone offset? (E.g., if scheduling "today at X", compute the exact ISO time offset).
+
+## Step 2: Make the API Request
+Once you have the details, trigger an HTTP POST request to the API endpoint using a script or command (such as `curl` or a Node.js script).
+
+**API REQUEST DETAILS**:
+- **URL**: `[API_URL]`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer [API_TOKEN]`
+- **Request Body JSON**:
+  - `name`: "[Task Name]"
+  - `taskType`: "OneTime" | "Interval" | "Cron"
+  - `targetWaChatId`: "[Recipient Number]"
+  - `targetList`: []
+  - `scheduleSpec`: 
+    - For OneTime: `{"run_at": "[ISO String]"}` (e.g., `"2026-06-29T16:12:00+08:00"`)
+    - For Interval: `{"interval_secs": [N]}`
+    - For Cron: `{"expression": "[Cron Expr]"}`
+  - `messageTemplate`: "[Message]"
+  - `messageTemplate2`: "" (or custom template if requested)
+
+### Example Node.js Execution Script:
+```javascript
+const res = await fetch('[API_URL]', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer [API_TOKEN]'
+  },
+  body: JSON.stringify({
+    name: 'Scheduled Alert',
+    taskType: 'OneTime',
+    targetWaChatId: '[DEFAULT_NUMBER]',
+    targetList: [],
+    scheduleSpec: { run_at: '2026-06-29T16:12:00+08:00' },
+    messageTemplate: 'Hello!',
+    messageTemplate2: ''
+  })
+});
+console.log(await res.json());
+```
+
+## Step 3: Execute and Report
+- Run the code or command to send the request.
+- Verify that the response indicates success (e.g., `{ success: true, taskId: "..." }`).
+- Report the scheduled task details back to the user.
+            </textarea>
+            <button id="copyPromptBtn" class="btn btn-secondary btn-sm" style="position: absolute; right: 12px; top: 12px; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; background-color: var(--bg-panel); border-color: var(--border); border-radius: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Copy Prompt</span>
+            </button>
+          </div>
+          
+          <div style="display: flex; align-items: flex-start; gap: 0.75rem; background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1rem; border-radius: 8px;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" style="flex-shrink: 0; margin-top: 0.1rem;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 16 12 12 8 12"></polyline><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <div style="font-size: 0.85rem; color: #064e3b; line-height: 1.4;">
+              <strong>How it works:</strong> Copying this template dynamically includes your configured default WhatsApp number and your active API access token. Once pasted, the AI assistant will know exactly how to hit the endpoint.
+            </div>
+          </div>
         </div>
       </div>
     </main>
