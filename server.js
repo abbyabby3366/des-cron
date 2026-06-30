@@ -3,8 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import cronParser from 'cron-parser';
-import { connectDb, User, Session, Task, SendLog, sha256Hex, generateToken, generateVerificationCode } from './database.js';
-import { startScheduler, sendWhatsAppMessage, calculateNextRun } from './scheduler.js';
+import { connectDb, User, Session, Task, SendLog, sha256Hex, generateToken, generateVerificationCode } from './src/database.js';
+import { startScheduler, sendWhatsAppMessage, calculateNextRun } from './src/scheduler.js';
 
 dotenv.config();
 

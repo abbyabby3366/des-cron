@@ -626,6 +626,19 @@ console.log(await res.json());
           <label class="form-label" for="messageTemplate">Personal message</label>
           <textarea id="messageTemplate" class="input" rows="3" placeholder="Hello! Here is your scheduled personal message..." required></textarea>
           <p class="form-hint">Sent to the owner's bound WhatsApp number.</p>
+          <details style="margin-top: 0.5rem; font-size: 0.8rem; border: 1px dashed var(--border); border-radius: 6px; padding: 0.5rem;">
+            <summary style="cursor: pointer; color: var(--accent); font-weight: 500; outline: none; user-select: none;">💡 Dynamic BNM Placeholders Guide</summary>
+            <div style="margin-top: 0.4rem; line-height: 1.4; color: var(--text-muted);">
+              Include these placeholders to pull live financial data from Bank Negara Malaysia:
+              <ul style="margin: 0.3rem 0; padding-left: 1.2rem; list-style-type: disc;">
+                <li><code>{{bnm:USD}}</code> - USD Exchange Rate (1200 session)</li>
+                <li><code>{{bnm:SGD}}</code> - SGD Exchange Rate (1200 session)</li>
+                <li><code>{{bnm:rates:EUR}}</code> - EUR Exchange Rate (1200 session)</li>
+                <li><code>{{bnm:gold}}</code> - Kijang Emas Gold Prices</li>
+                <li><code>{{bnm:opr}}</code> - Overnight Policy Rate (OPR)</li>
+              </ul>
+            </div>
+          </details>
         </div>
 
         <details class="accordion">

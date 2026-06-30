@@ -1,5 +1,6 @@
 import cronParser from 'cron-parser';
 import { Task, SendLog } from './database.js';
+import { resolvePlaceholders } from './helpers/bnm_helper.js';
 
 // ---------------------------------------------------------------
 // WhatsApp API helper
@@ -109,15 +110,17 @@ async function tick() {
 
     // 1. Send personal message to owner's WhatsApp JID
     if (task.target_wa_chat_id && task.message_template) {
+      let resolvedMsg = task.message_template;
       try {
-        const apiRes = await sendWhatsAppMessage(task.target_wa_chat_id, task.message_template);
+        resolvedMsg = await resolvePlaceholders(task.message_template);
+        const apiRes = await sendWhatsAppMessage(task.target_wa_chat_id, resolvedMsg);
         console.log(`[Scheduler]   ✓ Personal msg sent to ${task.target_wa_chat_id}`);
         await SendLog.create({
           task_id: task._id,
           task_name: task.name,
           owner_user_id: task.owner_user_id,
           target_jid: task.target_wa_chat_id,
-          message: task.message_template,
+          message: resolvedMsg,
           success: true,
           api_response: JSON.stringify(apiRes),
           sent_at: now
@@ -130,7 +133,7 @@ async function tick() {
           task_name: task.name,
           owner_user_id: task.owner_user_id,
           target_jid: task.target_wa_chat_id,
-          message: task.message_template,
+          message: resolvedMsg,
           success: false,
           error_msg: err.message,
           sent_at: now
@@ -140,35 +143,44 @@ async function tick() {
 
     // 2. Send broadcast messages to extra recipients
     const broadcastMsg = task.message_template_2 || task.message_template;
-    for (const jid of targetList) {
-      const trimJid = (jid || '').trim();
-      if (!trimJid) continue;
+    if (broadcastMsg && targetList.length > 0) {
+      let resolvedBroadcastMsg = broadcastMsg;
       try {
-        const apiRes = await sendWhatsAppMessage(trimJid, broadcastMsg);
-        console.log(`[Scheduler]   ✓ Broadcast sent to ${trimJid}`);
-        await SendLog.create({
-          task_id: task._id,
-          task_name: task.name,
-          owner_user_id: task.owner_user_id,
-          target_jid: trimJid,
-          message: broadcastMsg,
-          success: true,
-          api_response: JSON.stringify(apiRes),
-          sent_at: now
-        });
+        resolvedBroadcastMsg = await resolvePlaceholders(broadcastMsg);
       } catch (err) {
-        console.error(`[Scheduler]   ✗ Broadcast to ${trimJid} failed:`, err.message);
-        allSucceeded = false;
-        await SendLog.create({
-          task_id: task._id,
-          task_name: task.name,
-          owner_user_id: task.owner_user_id,
-          target_jid: trimJid,
-          message: broadcastMsg,
-          success: false,
-          error_msg: err.message,
-          sent_at: now
-        });
+        console.error(`[Scheduler]   ✗ Failed to resolve broadcast template:`, err.message);
+      }
+
+      for (const jid of targetList) {
+        const trimJid = (jid || '').trim();
+        if (!trimJid) continue;
+        try {
+          const apiRes = await sendWhatsAppMessage(trimJid, resolvedBroadcastMsg);
+          console.log(`[Scheduler]   ✓ Broadcast sent to ${trimJid}`);
+          await SendLog.create({
+            task_id: task._id,
+            task_name: task.name,
+            owner_user_id: task.owner_user_id,
+            target_jid: trimJid,
+            message: resolvedBroadcastMsg,
+            success: true,
+            api_response: JSON.stringify(apiRes),
+            sent_at: now
+          });
+        } catch (err) {
+          console.error(`[Scheduler]   ✗ Broadcast to ${trimJid} failed:`, err.message);
+          allSucceeded = false;
+          await SendLog.create({
+            task_id: task._id,
+            task_name: task.name,
+            owner_user_id: task.owner_user_id,
+            target_jid: trimJid,
+            message: resolvedBroadcastMsg,
+            success: false,
+            error_msg: err.message,
+            sent_at: now
+          });
+        }
       }
     }
 
