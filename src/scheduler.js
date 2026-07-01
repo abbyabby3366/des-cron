@@ -70,7 +70,8 @@ export function calculateNextRun(taskType, scheduleSpec, fromTime = Date.now()) 
   if (taskType === 'Cron') {
     try {
       const interval = cronParser.parseExpression(spec.expression, {
-        currentDate: new Date(fromTime)
+        currentDate: new Date(fromTime),
+        tz: process.env.TZ || 'Asia/Kuala_Lumpur'
       });
       return interval.next().toDate().getTime();
     } catch (err) {
@@ -208,10 +209,26 @@ async function tick() {
   }
 }
 
-export function startScheduler(intervalMs = 5000) {
+export async function startScheduler(intervalMs = 5000) {
   if (schedulerInterval) return;
 
   console.log(`[Scheduler] Started (polling every ${intervalMs / 1000}s)`);
+
+  // Recalculate next run times for active Cron tasks on startup to align with new timezone logic
+  try {
+    const activeCronTasks = await Task.find({ status: 'Active', task_type: 'Cron' });
+    for (const task of activeCronTasks) {
+      const correctNextRun = calculateNextRun(task.task_type, task.schedule_spec, Date.now());
+      if (correctNextRun && correctNextRun !== task.next_run_at) {
+        console.log(`[Scheduler] Adjusting next run for Cron task "${task.name}" (${task._id}) from ${task.next_run_at ? new Date(task.next_run_at).toLocaleString() : 'None'} to ${new Date(correctNextRun).toLocaleString()}`);
+        task.next_run_at = correctNextRun;
+        task.updated_at = Date.now();
+        await task.save();
+      }
+    }
+  } catch (err) {
+    console.error('[Scheduler] Failed to adjust next run times on startup:', err.message);
+  }
 
   // Run first tick immediately
   tick().catch(err => console.error('[Scheduler] Initial tick error:', err));

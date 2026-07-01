@@ -7,6 +7,7 @@ import { connectDb, User, Session, Task, SendLog, sha256Hex, generateToken, gene
 import { startScheduler, sendWhatsAppMessage, calculateNextRun } from './src/scheduler.js';
 
 dotenv.config();
+process.env.TZ = process.env.TZ || 'Asia/Kuala_Lumpur';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -500,7 +501,8 @@ app.get('/api/calendar', authenticateToken, async (req, res) => {
           const startMs = Math.max(monthStart, task.created_at || 0, Date.now());
           const interval = cronParser.parseExpression(spec.expression, {
             currentDate: new Date(startMs),
-            endDate: new Date(monthEnd - 1)
+            endDate: new Date(monthEnd - 1),
+            tz: process.env.TZ || 'Asia/Kuala_Lumpur'
           });
           // Collect up to 100 fire times within the month
           let count = 0;

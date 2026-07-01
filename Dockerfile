@@ -14,8 +14,8 @@ EXPOSE 3000
 
 # Set default production env variables
 ENV NODE_ENV=production
+ENV TZ=Asia/Kuala_Lumpur
 ENV PORT=3000
-ENV MONGODB_URI=mongodb+srv://...
 
 # Command to run application
 CMD ["npm", "start"]

@@ -56,7 +56,8 @@ async function run() {
       try {
         const interval = cronParser.parseExpression(spec.expression, {
           currentDate: new Date(monthStart),
-          endDate: new Date(monthEnd - 1)
+          endDate: new Date(monthEnd - 1),
+          tz: process.env.TZ || 'Asia/Kuala_Lumpur'
         });
         let count = 0;
         while (true) {
