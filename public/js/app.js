@@ -161,8 +161,10 @@ function initPageAgent() {
   const isEnabled = localStorage.getItem('pageAgentEnabled') === 'true';
   if (isEnabled) {
     loadPageAgentScript();
+    startBridgePolling();
   } else {
     unloadPageAgent();
+    stopBridgePolling();
   }
   updatePageAgentUI();
 }
@@ -171,6 +173,232 @@ function togglePageAgent() {
   const isEnabled = localStorage.getItem('pageAgentEnabled') === 'true';
   localStorage.setItem('pageAgentEnabled', (!isEnabled).toString());
   initPageAgent();
+}
+
+// ---------------------------------------------------------------
+// ANTIGRAVITY ↔ PAGE AGENT BRIDGE
+// ---------------------------------------------------------------
+let bridgePollingInterval = null;
+let bridgeBusy = false;
+
+function startBridgePolling() {
+  if (bridgePollingInterval) return;
+  console.log('[Bridge] Polling started');
+  bridgePollingInterval = setInterval(pollForBridgeTask, 2500);
+}
+
+function stopBridgePolling() {
+  if (bridgePollingInterval) {
+    clearInterval(bridgePollingInterval);
+    bridgePollingInterval = null;
+    console.log('[Bridge] Polling stopped');
+  }
+}
+
+async function pollForBridgeTask() {
+  if (bridgeBusy) return;
+  try {
+    const res = await fetch('/api/page-agent/pending');
+    const data = await res.json();
+    if (!data) return;
+
+    bridgeBusy = true;
+    console.log(`[Bridge] Received task: ${data.taskId} — "${data.task}"`);
+
+    if (data.task === '__screenshot_only__') {
+      // Screenshot-only request
+      await handleScreenshotOnly(data.taskId);
+    } else {
+      await handleBridgeTask(data.taskId, data.task, data.includeScreenshot);
+    }
+  } catch (err) {
+    console.error('[Bridge] Poll error:', err);
+  } finally {
+    bridgeBusy = false;
+  }
+}
+
+async function handleScreenshotOnly(taskId) {
+  try {
+    const screenshot = await captureScreenshot();
+    await reportBridgeResult(taskId, 'Screenshot captured', screenshot);
+    showToast('Screenshot captured for Antigravity', 'success');
+  } catch (err) {
+    console.error('[Bridge] Screenshot error:', err);
+    await reportBridgeResult(taskId, `Screenshot error: ${err.message}`, null);
+  }
+}
+
+async function handleBridgeTask(taskId, task, includeScreenshot) {
+  try {
+    // Step 1: Find PageAgent's input field and submit the task
+    const submitted = submitTaskToPageAgent(task);
+    if (!submitted) {
+      await reportBridgeResult(taskId, 'Error: Could not find PageAgent input field. Is PageAgent loaded?', null);
+      showToast('Bridge: PageAgent input not found', 'danger');
+      return;
+    }
+
+    showToast(`Bridge: Running "${task.substring(0, 50)}..."`, 'info');
+
+    // Step 2: Wait for PageAgent to complete (watch status indicator)
+    const completed = await waitForPageAgentCompletion(120000); // 2 min timeout
+
+    // Step 3: Read result from history panel
+    const result = readPageAgentResult();
+
+    // Step 4: Capture screenshot if requested
+    let screenshot = null;
+    if (includeScreenshot) {
+      // Small delay to let final UI settle
+      await new Promise(r => setTimeout(r, 1000));
+      screenshot = await captureScreenshot();
+    }
+
+    // Step 5: Report back
+    await reportBridgeResult(taskId, result, screenshot);
+
+    showToast(`Bridge: Task completed`, 'success');
+    console.log(`[Bridge] Task ${taskId} completed. Result: ${result.substring(0, 100)}`);
+
+  } catch (err) {
+    console.error('[Bridge] Task error:', err);
+    await reportBridgeResult(taskId, `Error: ${err.message}`, null);
+    showToast(`Bridge error: ${err.message}`, 'danger');
+  }
+}
+
+function submitTaskToPageAgent(task) {
+  // Find PageAgent's input field by its CSS class pattern
+  const input = document.querySelector('[class*="_taskInput_"]');
+  if (!input) return false;
+
+  // Set the value
+  input.value = task;
+  // Dispatch input event so PageAgent's internal state updates
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // Simulate Enter key press to submit
+  setTimeout(() => {
+    input.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+    }));
+    input.dispatchEvent(new KeyboardEvent('keyup', {
+      key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+    }));
+  }, 100);
+
+  return true;
+}
+
+function waitForPageAgentCompletion(timeoutMs = 120000) {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+    let wasRunning = false;
+
+    const check = () => {
+      if (Date.now() - startTime > timeoutMs) {
+        resolve(false);
+        return;
+      }
+
+      const indicator = document.querySelector('[class*="_indicator_"]');
+      const statusText = document.querySelector('[class*="_statusText_"]');
+
+      // Check if agent is currently running (thinking/executing)
+      if (indicator) {
+        const classes = indicator.className || '';
+        if (classes.includes('_thinking_') || classes.includes('_tool_executing_')) {
+          wasRunning = true;
+        }
+        // Check if it completed (was running, now shows completed/error/idle)
+        if (wasRunning && (classes.includes('_completed_') || classes.includes('_error_') ||
+            classes.includes('_input_') || classes.includes('_output_'))) {
+          // Give a brief moment for history to update
+          setTimeout(() => resolve(true), 500);
+          return;
+        }
+      }
+
+      // Also check status text for completion indicators
+      if (statusText && wasRunning) {
+        const text = (statusText.textContent || '').toLowerCase();
+        if (text.includes('done') || text.includes('complete') || text.includes('finished') || text.includes('failed')) {
+          setTimeout(() => resolve(true), 500);
+          return;
+        }
+      }
+
+      setTimeout(check, 1000);
+    };
+
+    // Small initial delay to let PageAgent start processing
+    setTimeout(check, 2000);
+  });
+}
+
+function readPageAgentResult() {
+  // Read the last few history items from PageAgent's history panel
+  const historyItems = document.querySelectorAll('[class*="_historyItem_"]');
+  if (!historyItems || historyItems.length === 0) {
+    return 'No history items found. PageAgent may not have produced output.';
+  }
+
+  // Collect the last few items as the result
+  const results = [];
+  const items = Array.from(historyItems).slice(-5); // Last 5 items
+  for (const item of items) {
+    const content = item.querySelector('[class*="_historyContent_"]');
+    if (content) {
+      results.push(content.textContent.trim());
+    }
+  }
+
+  return results.join('\n---\n') || 'Could not read PageAgent output.';
+}
+
+async function captureScreenshot() {
+  if (typeof html2canvas === 'undefined') {
+    throw new Error('html2canvas not loaded');
+  }
+
+  // Hide PageAgent overlay for clean screenshot
+  const overlays = document.querySelectorAll('[class*="_wrapper_1ooyb"], [class*="_wrapper_1tu05"]');
+  overlays.forEach(el => { el.style.display = 'none'; });
+
+  try {
+    const canvas = await html2canvas(document.body, {
+      useCORS: true,
+      allowTaint: true,
+      scale: 1,
+      logging: false,
+      ignoreElements: (el) => {
+        // Ignore PageAgent elements and toast container
+        const cls = el.className || '';
+        if (typeof cls === 'string') {
+          return cls.includes('_wrapper_1ooyb') || cls.includes('_wrapper_1tu05') ||
+                 cls.includes('_cursor_1dgwb') || el.id === 'toastContainer';
+        }
+        return false;
+      }
+    });
+    return canvas.toDataURL('image/png');
+  } finally {
+    // Restore PageAgent overlay
+    overlays.forEach(el => { el.style.display = ''; });
+  }
+}
+
+async function reportBridgeResult(taskId, result, screenshot) {
+  try {
+    await fetch('/api/page-agent/result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId, result, screenshot })
+    });
+  } catch (err) {
+    console.error('[Bridge] Failed to report result:', err);
+  }
 }
 
 // ---------------------------------------------------------------

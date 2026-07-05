@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import cronParser from 'cron-parser';
 import { connectDb, User, Session, Task, SendLog, sha256Hex, generateToken, generateVerificationCode } from './src/database.js';
 import { startScheduler, sendWhatsAppMessage, calculateNextRun } from './src/scheduler.js';
@@ -13,7 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.resolve(process.cwd(), 'public')));
 
 // ---------------------------------------------------------------
@@ -741,6 +742,120 @@ app.post('/api/webhook/whatsapp', async (req, res) => {
     console.error('Webhook error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
+});
+
+// ---------------------------------------------------------------
+// PAGE AGENT BRIDGE (Antigravity ↔ PageAgent)
+// ---------------------------------------------------------------
+const pageAgentTasks = new Map();
+let pageAgentTaskCounter = 0;
+
+// Ensure screenshots directory exists
+const screenshotsDir = path.resolve(process.cwd(), 'public', 'screenshots');
+if (!fs.existsSync(screenshotsDir)) {
+  fs.mkdirSync(screenshotsDir, { recursive: true });
+}
+
+// Submit a task from Antigravity (via curl)
+app.post('/api/page-agent/execute', (req, res) => {
+  const { task, includeScreenshot } = req.body;
+  if (!task) return res.status(400).json({ error: 'task is required' });
+
+  const taskId = `pa_${++pageAgentTaskCounter}_${Date.now()}`;
+  pageAgentTasks.set(taskId, {
+    taskId,
+    task,
+    includeScreenshot: includeScreenshot !== false,
+    status: 'pending',
+    result: null,
+    screenshotPath: null,
+    createdAt: Date.now(),
+  });
+
+  console.log(`[PageAgent Bridge] Task submitted: ${taskId} — "${task.substring(0, 80)}"`);
+  res.json({ taskId, status: 'pending' });
+});
+
+// Frontend polls for pending tasks
+app.get('/api/page-agent/pending', (req, res) => {
+  for (const [id, t] of pageAgentTasks) {
+    if (t.status === 'pending') {
+      t.status = 'running';
+      console.log(`[PageAgent Bridge] Task picked up: ${id}`);
+      return res.json({ taskId: id, task: t.task, includeScreenshot: t.includeScreenshot });
+    }
+  }
+  res.json(null);
+});
+
+// Frontend posts result back
+app.post('/api/page-agent/result', (req, res) => {
+  const { taskId, result, screenshot } = req.body;
+  if (!taskId) return res.status(400).json({ error: 'taskId is required' });
+
+  const t = pageAgentTasks.get(taskId);
+  if (!t) return res.status(404).json({ error: 'Task not found' });
+
+  t.status = 'completed';
+  t.result = result || 'No result text captured';
+  t.completedAt = Date.now();
+
+  // Save screenshot to disk if provided
+  if (screenshot) {
+    try {
+      const base64Data = screenshot.replace(/^data:image\/png;base64,/, '');
+      const filename = `${taskId}.png`;
+      const filepath = path.join(screenshotsDir, filename);
+      fs.writeFileSync(filepath, base64Data, 'base64');
+      t.screenshotPath = filepath;
+      console.log(`[PageAgent Bridge] Screenshot saved: ${filepath}`);
+    } catch (err) {
+      console.error('[PageAgent Bridge] Screenshot save error:', err);
+    }
+  }
+
+  console.log(`[PageAgent Bridge] Task completed: ${taskId}`);
+  res.json({ ok: true });
+});
+
+// Antigravity retrieves result
+app.get('/api/page-agent/result/:taskId', (req, res) => {
+  const t = pageAgentTasks.get(req.params.taskId);
+  if (!t) return res.status(404).json({ error: 'Task not found' });
+  res.json({
+    taskId: t.taskId,
+    task: t.task,
+    status: t.status,
+    result: t.result,
+    screenshotPath: t.screenshotPath,
+    createdAt: t.createdAt,
+    completedAt: t.completedAt,
+  });
+});
+
+// Standalone screenshot request (no task needed)
+app.post('/api/page-agent/screenshot', (req, res) => {
+  const taskId = `ss_${++pageAgentTaskCounter}_${Date.now()}`;
+  pageAgentTasks.set(taskId, {
+    taskId,
+    task: '__screenshot_only__',
+    includeScreenshot: true,
+    status: 'pending',
+    result: null,
+    screenshotPath: null,
+    createdAt: Date.now(),
+  });
+  console.log(`[PageAgent Bridge] Screenshot request: ${taskId}`);
+  res.json({ taskId, status: 'pending' });
+});
+
+// List all tasks (for debugging)
+app.get('/api/page-agent/tasks', (req, res) => {
+  const tasks = [];
+  for (const t of pageAgentTasks.values()) {
+    tasks.push({ taskId: t.taskId, task: t.task, status: t.status, createdAt: t.createdAt, completedAt: t.completedAt });
+  }
+  res.json(tasks);
 });
 
 // ---------------------------------------------------------------
