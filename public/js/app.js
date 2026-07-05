@@ -32,12 +32,155 @@ function formatVerifCode(code) {
 }
 
 // ---------------------------------------------------------------
+// PAGE AGENT STATE MANAGEMENT & TOASTS
+// ---------------------------------------------------------------
+const PAGE_AGENT_CDN = 'https://cdn.jsdelivr.net/npm/page-agent@1.11.0/dist/iife/page-agent.demo.js';
+const PAGE_AGENT_SCRIPT_ID = 'pageAgentScript';
+
+function showToast(message, type = 'info') {
+  let toastContainer = document.getElementById('toastContainer');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toastContainer';
+    toastContainer.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toastContainer);
+  }
+
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    background: ${type === 'danger' ? 'rgba(239, 68, 68, 0.95)' : type === 'success' ? 'rgba(16, 185, 129, 0.95)' : 'rgba(30, 41, 59, 0.95)'};
+    color: white;
+    padding: 0.75rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: 1px solid ${type === 'danger' ? 'rgba(239, 68, 68, 0.2)' : type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.08)'};
+    pointer-events: auto;
+    animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.3s, transform 0.3s;
+    font-family: sans-serif;
+  `;
+  toast.textContent = message;
+  toastContainer.appendChild(toast);
+
+  if (!document.getElementById('toastAnimationStyles')) {
+    const style = document.createElement('style');
+    style.id = 'toastAnimationStyles';
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%) translateY(0); opacity: 0; }
+        to { transform: translateX(0) translateY(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, 4000);
+}
+
+function updatePageAgentUI() {
+  const textEl = document.getElementById('pageAgentStatusText');
+  const dotEl = document.getElementById('pageAgentStatusDot');
+  const btnEl = document.getElementById('pageAgentToggleBtn');
+  const isEnabled = localStorage.getItem('pageAgentEnabled') === 'true';
+
+  if (textEl && dotEl) {
+    if (isEnabled) {
+      textEl.textContent = 'ON';
+      dotEl.style.background = 'var(--success)';
+      if (btnEl) {
+        btnEl.style.borderColor = 'rgba(16, 185, 129, 0.2)';
+        btnEl.style.background = 'rgba(16, 185, 129, 0.08)';
+        btnEl.style.color = 'var(--success)';
+      }
+    } else {
+      textEl.textContent = 'OFF';
+      dotEl.style.background = '#94a3b8';
+      if (btnEl) {
+        btnEl.style.borderColor = 'var(--border)';
+        btnEl.style.background = 'rgba(255, 255, 255, 0.04)';
+        btnEl.style.color = 'var(--text-secondary)';
+      }
+    }
+  }
+}
+
+function loadPageAgentScript() {
+  // Don't load again if already present
+  if (document.getElementById(PAGE_AGENT_SCRIPT_ID)) return;
+
+  const script = document.createElement('script');
+  script.id = PAGE_AGENT_SCRIPT_ID;
+  script.src = PAGE_AGENT_CDN;
+  script.crossOrigin = 'true';
+  script.onload = () => {
+    showToast('Page Agent loaded', 'success');
+  };
+  script.onerror = () => {
+    showToast('Failed to load Page Agent script. Check your network.', 'danger');
+    localStorage.setItem('pageAgentEnabled', 'false');
+    updatePageAgentUI();
+  };
+  document.body.appendChild(script);
+}
+
+function unloadPageAgent() {
+  // Remove the injected script tag
+  const script = document.getElementById(PAGE_AGENT_SCRIPT_ID);
+  if (script) script.remove();
+
+  // Remove all DOM elements injected by PageAgent (they use very high z-index)
+  // PageAgent injects elements with specific class prefixes into the body
+  document.querySelectorAll('[class*="_wrapper_1ooyb"], [class*="_wrapper_1tu05"], [class*="_cursor_1dgwb"]').forEach(el => el.remove());
+
+  // Also remove the style tag it injects
+  document.querySelectorAll('style').forEach(style => {
+    if (style.textContent && style.textContent.includes('_wrapper_1ooyb')) {
+      style.remove();
+    }
+  });
+}
+
+function initPageAgent() {
+  const isEnabled = localStorage.getItem('pageAgentEnabled') === 'true';
+  if (isEnabled) {
+    loadPageAgentScript();
+  } else {
+    unloadPageAgent();
+  }
+  updatePageAgentUI();
+}
+
+function togglePageAgent() {
+  const isEnabled = localStorage.getItem('pageAgentEnabled') === 'true';
+  localStorage.setItem('pageAgentEnabled', (!isEnabled).toString());
+  initPageAgent();
+}
+
+// ---------------------------------------------------------------
 // INITIALIZATION
 // ---------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   setupEventListeners();
   setupDialogLightDismiss();
+  initPageAgent();
   
   if (apiToken && currentUser) {
     // Optimistically show the app using the cached profile to prevent login screen flashing
@@ -536,6 +679,16 @@ function setupEventListeners() {
           copyBtn.style.color = '';
         }, 2000);
       }
+    });
+  }
+
+  // Page Agent toggle listener
+  const pageAgentBtn = document.getElementById('pageAgentToggleBtn');
+  if (pageAgentBtn) {
+    pageAgentBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePageAgent();
     });
   }
 }
