@@ -1444,9 +1444,11 @@ async function refreshCalendar() {
   const prevBtn = document.getElementById('calPrevBtn');
   const nextBtn = document.getElementById('calNextBtn');
   const todayBtn = document.getElementById('calTodayBtn');
+  const loader = document.getElementById('calendarLoader');
 
   // Show loading state
   if (grid) grid.style.opacity = '0.5';
+  if (loader) loader.classList.add('active');
   if (prevBtn) prevBtn.disabled = true;
   if (nextBtn) nextBtn.disabled = true;
   if (todayBtn) todayBtn.disabled = true;
@@ -1463,6 +1465,7 @@ async function refreshCalendar() {
   } finally {
     // Hide loading state
     if (grid) grid.style.opacity = '1';
+    if (loader) loader.classList.remove('active');
     if (prevBtn) prevBtn.disabled = false;
     if (nextBtn) nextBtn.disabled = false;
     if (todayBtn) todayBtn.disabled = false;

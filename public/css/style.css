@@ -1035,11 +1035,42 @@ dialog::backdrop {
 }
 
 .calendar-grid-wrapper {
+  position: relative;
   background: rgba(30, 41, 59, 0.3);
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 0.75rem;
+}
+
+/* Calendar Loading Overlay */
+.calendar-loader-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.calendar-loader-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.calendar-loader-overlay .spinner {
+  width: 36px;
+  height: 36px;
+  border-width: 4px;
 }
 
 .calendar-weekdays {
