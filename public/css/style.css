@@ -222,6 +222,7 @@ body {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
+  will-change: opacity, transform;
 }
 
 .page-container.active {
@@ -230,8 +231,8 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 .page-header {
@@ -331,9 +332,7 @@ textarea:disabled {
 
 /* Glass Panels & Cards */
 .panel {
-  background: rgba(30, 41, 59, 0.4);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(30, 41, 59, 0.65);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.85rem;
@@ -1041,6 +1040,7 @@ dialog::backdrop {
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 0.75rem;
+  min-height: 340px;
 }
 
 /* Calendar Loading Overlay */
@@ -1059,12 +1059,14 @@ dialog::backdrop {
   z-index: 10;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
 .calendar-loader-overlay.active {
   opacity: 1;
   pointer-events: auto;
+  visibility: visible;
 }
 
 .calendar-loader-overlay .spinner {
@@ -1230,9 +1232,7 @@ dialog::backdrop {
 
 /* Day detail panel */
 .cal-day-detail {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(30, 41, 59, 0.7);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.85rem;

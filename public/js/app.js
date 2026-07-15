@@ -8,6 +8,8 @@ try {
 let apiToken = localStorage.getItem('cronwa_token') || null;
 let cachedUsers = [];
 let cachedTasks = [];
+let cachedLogs = [];
+let loaderTimeout = null;
 let autoRefreshInterval = null;
 let calCurrentYear = new Date().getFullYear();
 let calCurrentMonth = new Date().getMonth() + 1;
@@ -498,6 +500,24 @@ function showApp() {
   const hash = window.location.hash.replace('#', '') || 'dashboard';
   switchTab(hash);
   startAutoRefresh();
+  
+  // Pre-load data for other tabs silently in the background
+  preloadAllTabsData();
+}
+
+function preloadAllTabsData() {
+  if (!apiToken) return;
+  const hash = window.location.hash.replace('#', '') || 'dashboard';
+  
+  if (hash !== 'dashboard') {
+    refreshTasks(true);
+  }
+  if (hash !== 'calendar') {
+    refreshCalendar(true);
+  }
+  if (hash !== 'logs') {
+    refreshLogs(true);
+  }
 }
 
 function updateProfileUI() {
@@ -994,6 +1014,11 @@ async function refreshStats() {
 async function refreshTasks(silent = false) {
   if (!apiToken) return;
   
+  // SWR: render from cache instantly
+  if (cachedTasks && cachedTasks.length > 0) {
+    applyTaskFilterAndRender();
+  }
+  
   try {
     const res = await fetch('/api/tasks', {
       headers: { 'Authorization': `Bearer ${apiToken}` }
@@ -1336,20 +1361,33 @@ async function handleTaskFormSubmit(e) {
 // ---------------------------------------------------------------
 // LOGS
 // ---------------------------------------------------------------
-async function refreshLogs() {
+async function refreshLogs(silent = false) {
   if (!apiToken) return;
+  
+  // SWR: render from cache instantly
+  if (cachedLogs && cachedLogs.length > 0) {
+    renderLogsList(cachedLogs);
+  }
+  
   const btn = document.getElementById('refreshLogsBtn');
-  btn.disabled = true;
-  btn.textContent = 'Refreshing…';
+  if (!silent && btn) {
+    btn.disabled = true;
+    btn.textContent = 'Refreshing…';
+  }
   
   try {
     const res = await fetch('/api/logs', { headers: { 'Authorization': `Bearer ${apiToken}` } });
     if (!res.ok) return;
-    renderLogsList(await res.json());
+    const logs = await res.json();
+    cachedLogs = logs;
+    renderLogsList(logs);
   } catch (e) {
+    console.error('Error refreshing logs:', e);
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Refresh';
+    if (!silent && btn) {
+      btn.disabled = false;
+      btn.textContent = 'Refresh';
+    }
   }
 }
 
@@ -1438,7 +1476,7 @@ function renderLogsList(logs) {
 // ---------------------------------------------------------------
 // CALENDAR
 // ---------------------------------------------------------------
-async function refreshCalendar() {
+async function refreshCalendar(silent = false) {
   if (!apiToken) return;
   const grid = document.getElementById('calendarGrid');
   const prevBtn = document.getElementById('calPrevBtn');
@@ -1446,12 +1484,27 @@ async function refreshCalendar() {
   const todayBtn = document.getElementById('calTodayBtn');
   const loader = document.getElementById('calendarLoader');
 
-  // Show loading state
-  if (grid) grid.style.opacity = '0.5';
-  if (loader) loader.classList.add('active');
-  if (prevBtn) prevBtn.disabled = true;
-  if (nextBtn) nextBtn.disabled = true;
-  if (todayBtn) todayBtn.disabled = true;
+  // SWR: render from cache instantly
+  if (calendarData) {
+    renderCalendar(calendarData);
+  }
+
+  // Clear any existing loader timeout
+  if (loaderTimeout) {
+    clearTimeout(loaderTimeout);
+    loaderTimeout = null;
+  }
+
+  // Delay showing loader to prevent flickering on fast requests
+  if (!silent) {
+    loaderTimeout = setTimeout(() => {
+      if (grid) grid.style.opacity = '0.5';
+      if (loader) loader.classList.add('active');
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      if (todayBtn) todayBtn.disabled = true;
+    }, 250);
+  }
 
   try {
     const res = await fetch(`/api/calendar?year=${calCurrentYear}&month=${calCurrentMonth}`, {
@@ -1463,12 +1516,18 @@ async function refreshCalendar() {
   } catch (e) {
     console.error('Error refreshing calendar:', e);
   } finally {
+    if (loaderTimeout) {
+      clearTimeout(loaderTimeout);
+      loaderTimeout = null;
+    }
     // Hide loading state
-    if (grid) grid.style.opacity = '1';
-    if (loader) loader.classList.remove('active');
-    if (prevBtn) prevBtn.disabled = false;
-    if (nextBtn) nextBtn.disabled = false;
-    if (todayBtn) todayBtn.disabled = false;
+    if (!silent) {
+      if (grid) grid.style.opacity = '1';
+      if (loader) loader.classList.remove('active');
+      if (prevBtn) prevBtn.disabled = false;
+      if (nextBtn) nextBtn.disabled = false;
+      if (todayBtn) todayBtn.disabled = false;
+    }
   }
 }
 
