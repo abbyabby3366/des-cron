@@ -9,6 +9,7 @@ let apiToken = localStorage.getItem('cronwa_token') || null;
 let cachedUsers = [];
 let cachedTasks = [];
 let cachedLogs = [];
+let cachedEvents = [];
 let loaderTimeout = null;
 let autoRefreshInterval = null;
 let calCurrentYear = new Date().getFullYear();
@@ -16,7 +17,10 @@ let calCurrentMonth = new Date().getMonth() + 1;
 let calendarData = null;
 let calSelectTodayOnRender = false;
 let currentTaskFilter = 'all';
+let currentTaskStatusFilter = 'upcoming';
+let currentEventFilter = 'upcoming';
 let taskSearchQuery = '';
+let eventSearchQuery = '';
 
 // SHA-256 via Web Crypto API
 async function sha256Hex(message) {
@@ -518,6 +522,9 @@ function preloadAllTabsData() {
   if (hash !== 'logs') {
     refreshLogs(true);
   }
+  if (hash !== 'events') {
+    refreshEvents(true);
+  }
 }
 
 function updateProfileUI() {
@@ -556,6 +563,8 @@ function switchTab(tabId) {
     refreshStats();
   } else if (tabId === 'logs') {
     refreshLogs();
+  } else if (tabId === 'events') {
+    refreshEvents();
   } else if (tabId === 'calendar') {
     refreshCalendar();
   } else if (tabId === 'settings') {
@@ -563,8 +572,6 @@ function switchTab(tabId) {
   } else if (tabId === 'admin') {
     if (currentUser.isAdmin) refreshUsers();
     else switchTab('dashboard');
-  } else if (tabId === 'instructions') {
-    loadInstructions();
   }
   
   window.location.hash = tabId;
@@ -625,6 +632,8 @@ function startAutoRefresh() {
     if (tab === 'dashboard') {
       refreshTasks(true);
       refreshStats();
+    } else if (tab === 'events') {
+      refreshEvents(true);
     }
   }, 10000);
 }
@@ -701,13 +710,22 @@ function setupEventListeners() {
     }
   });
 
-  // Task filter tabs change listener
-  document.querySelectorAll('#taskTypeFilterTabs .filter-tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
-      document.querySelectorAll('#taskTypeFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      currentTaskFilter = tab.getAttribute('data-value');
+  // Task filter dropdown change listener
+  const taskFilterDropdown = document.getElementById('taskTypeFilterDropdown');
+  if (taskFilterDropdown) {
+    taskFilterDropdown.addEventListener('change', (e) => {
+      currentTaskFilter = e.target.value;
       applyTaskFilterAndRender();
+    });
+  }
+
+  // Event filter tabs change listener
+  document.querySelectorAll('#eventTypeFilterTabs .filter-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      document.querySelectorAll('#eventTypeFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentEventFilter = tab.getAttribute('data-value');
+      applyEventFilterAndRender();
     });
   });
 
@@ -718,6 +736,48 @@ function setupEventListeners() {
       taskSearchQuery = e.target.value.toLowerCase().trim();
       applyTaskFilterAndRender();
     });
+  }
+
+  // Task status filter tabs change listener
+  document.querySelectorAll('#taskStatusFilterTabs .filter-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      document.querySelectorAll('#taskStatusFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentTaskStatusFilter = tab.getAttribute('data-value');
+      applyTaskFilterAndRender();
+    });
+  });
+
+  // Event search query listener
+  const eventSearchInput = document.getElementById('eventSearchInput');
+  if (eventSearchInput) {
+    eventSearchInput.addEventListener('input', (e) => {
+      eventSearchQuery = e.target.value.toLowerCase().trim();
+      applyEventFilterAndRender();
+    });
+  }
+
+  // Event form
+  const eventForm = document.getElementById('eventForm');
+  if (eventForm) {
+    eventForm.addEventListener('submit', handleEventFormSubmit);
+  }
+
+  // Auto-check custom checkbox on value input
+  const customValueInput = document.getElementById('eventReminderCustomValue');
+  if (customValueInput) {
+    customValueInput.addEventListener('input', () => {
+      const customCb = document.getElementById('eventReminderCustomCheckbox');
+      if (customCb && customValueInput.value) {
+        customCb.checked = true;
+      }
+    });
+  }
+
+  // Create new event button
+  const createEventBtn = document.getElementById('createNewEventBtn');
+  if (createEventBtn) {
+    createEventBtn.addEventListener('click', () => openEventDialog());
   }
 
   // Task form
@@ -805,14 +865,26 @@ function setupEventListeners() {
 
   document.getElementById('calTodayBtn').addEventListener('click', () => {
     const today = new Date();
+    const isAlreadyCurrentMonth = calCurrentYear === today.getFullYear() && calCurrentMonth === (today.getMonth() + 1);
+    
+    if (isAlreadyCurrentMonth) {
+      const todayCell = document.querySelector('.cal-day-today');
+      if (todayCell) {
+        if (!todayCell.classList.contains('cal-day-selected')) {
+          todayCell.click();
+        }
+      }
+      return;
+    }
+    
     calCurrentYear = today.getFullYear();
     calCurrentMonth = today.getMonth() + 1;
     calSelectTodayOnRender = true;
     refreshCalendar();
   });
 
-  // Calendar Toggles: daily, weekly, monthly, yearly
-  ['daily', 'weekly', 'monthly', 'yearly'].forEach(type => {
+  // Calendar Toggles: daily, weekly, monthly, yearly, tasks, events
+  ['daily', 'weekly', 'monthly', 'yearly', 'tasks', 'events'].forEach(type => {
     const capType = type.charAt(0).toUpperCase() + type.slice(1);
     const toggleBtn = document.getElementById(`calToggle${capType}Btn`);
     if (toggleBtn) {
@@ -1046,6 +1118,8 @@ function applyTaskFilterAndRender() {
   if (filterVal !== 'all') {
     if (filterVal === 'OneTime') {
       filtered = cachedTasks.filter(t => t.task_type === 'OneTime');
+    } else if (filterVal === 'reminders') {
+      filtered = cachedTasks.filter(t => t.event_id);
     } else if (filterVal === 'daily') {
       filtered = cachedTasks.filter(t => isDailySchedule(t));
     } else if (filterVal === 'weekly') {
@@ -1055,6 +1129,30 @@ function applyTaskFilterAndRender() {
     } else if (filterVal === 'yearly') {
       filtered = cachedTasks.filter(t => isYearlySchedule(t));
     }
+  }
+
+  if (currentTaskStatusFilter === 'upcoming') {
+    filtered = filtered.filter(t => {
+      if (t.status === 'Completed' || t.status === 'Failed') return false;
+      if (t.task_type === 'OneTime' && t.next_run_at && t.next_run_at < Date.now()) return false;
+      return true;
+    });
+    // Sort upcoming tasks: soonest next run first (tasks with next_run_at ascending, and items with next_run_at === null or undefined at the end)
+    filtered.sort((a, b) => {
+      if (!a.next_run_at) return 1;
+      if (!b.next_run_at) return -1;
+      return a.next_run_at - b.next_run_at;
+    });
+  } else if (currentTaskStatusFilter === 'past') {
+    filtered = filtered.filter(t => {
+      return t.status === 'Completed' || t.status === 'Failed' || (t.task_type === 'OneTime' && t.next_run_at && t.next_run_at < Date.now());
+    });
+    // Sort past tasks: most recently run first (last_run_at descending)
+    filtered.sort((a, b) => {
+      const aTime = a.last_run_at ? new Date(a.last_run_at).getTime() : 0;
+      const bTime = b.last_run_at ? new Date(b.last_run_at).getTime() : 0;
+      return bTime - aTime;
+    });
   }
   
   if (taskSearchQuery) {
@@ -1073,8 +1171,9 @@ function applyTaskFilterAndRender() {
       summaryText.textContent = 'No scheduled tasks';
     } else {
       const typeLabel = filterVal === 'all' ? '' : ` (${filterVal})`;
+      const statusLabel = currentTaskStatusFilter === 'upcoming' ? 'Upcoming' : 'Past';
       const searchLabel = taskSearchQuery ? ` matching "${taskSearchQuery}"` : '';
-      summaryText.textContent = `${filtered.length} of ${cachedTasks.length} task${cachedTasks.length === 1 ? '' : 's'} shown${typeLabel}${searchLabel}`;
+      summaryText.textContent = `${filtered.length} of ${cachedTasks.length} task${cachedTasks.length === 1 ? '' : 's'} shown (${statusLabel})${typeLabel}${searchLabel}`;
     }
   }
   
@@ -1117,10 +1216,10 @@ function renderTasksList(tasks) {
   
   // Build header
   const headerHtml = `
-    <th style="width: 22%;">Task Details</th>
-    <th style="width: 35%;">Message</th>
-    <th>Schedule &amp; Runs</th>
-    <th style="text-align: right;">Actions</th>
+    <th style="width: 32%;">Task Details</th>
+    <th style="width: 32%;">Message</th>
+    <th style="width: 24%;">Schedule &amp; Runs</th>
+    <th style="width: 12%; text-align: right;">Actions</th>
   `;
   if (headerRow) headerRow.innerHTML = headerHtml;
 
@@ -1159,12 +1258,17 @@ function renderTasksList(tasks) {
     actionBtns += `<button class="btn btn-secondary btn-sm" onclick="openTaskDialog('${task.id}')" title="Edit" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg></button>`;
     actionBtns += `<button class="btn btn-danger btn-sm" onclick="deleteTask('${task.id}')" title="Delete" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>`;
 
+    const eventBadge = task.event_id
+      ? '<span class="badge badge-xs" style="background-color: rgba(14, 165, 233, 0.12); color: #7dd3fc; border: 1px solid rgba(14, 165, 233, 0.2);">Event Reminder</span>'
+      : '';
+
     tr.innerHTML = `
       <td>
         <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
           <span class="td-name">${escapeHtml(task.name)}</span>
-          <span class="badge ${statusClass}">${task.status}</span>
-          <span class="badge badge-primary">${task.task_type}</span>
+          ${task.status !== 'Active' ? `<span class="badge ${statusClass}">${task.status}</span>` : ''}
+          <span class="badge badge-primary badge-xs">${task.task_type}</span>
+          ${eventBadge}
         </div>
         <div class="td-meta" style="display: flex; align-items: center; gap: 0.5rem;">
           <span class="td-mono">To: ${escapeHtml(task.target_wa_chat_id)}</span>
@@ -1681,11 +1785,12 @@ function renderCalendar(data) {
   const today = new Date();
   const isCurrentMonth = today.getFullYear() === data.year && (today.getMonth() + 1) === data.month;
   const todayDay = today.getDate();
-
   const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
   const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
   const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
   const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
+  const hideTasks = localStorage.getItem('cal_hide_tasks') === 'true';
+  const hideEvents = localStorage.getItem('cal_hide_events') === 'true';
 
   // Render current month days
   for (let day = 1; day <= totalDays; day++) {
@@ -1699,19 +1804,26 @@ function renderCalendar(data) {
       }
     }
     
-    // Check if we have logs or scheduled tasks for this day
+    // Check if we have logs, scheduled tasks or events for this day
     const dayLogs = (data.logs && data.logs[day]) || [];
     const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
+    const dayEvents = (data.events && data.events[day]) || [];
     
-    const dayLogsFiltered = dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
-    const dayScheduledFiltered = dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
+    const dayLogsFiltered = hideTasks ? [] : dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
+    const dayScheduledFiltered = hideTasks ? [] : dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
+    const dayEventsFiltered = hideEvents ? [] : dayEvents;
     
     let dotsHtml = '';
     let labelsHtml = '';
     
     let dots = [];
     
-    // 1. Process each scheduled task on this day
+    // 1. Process events on this day
+    dayEventsFiltered.forEach(item => {
+      dots.push(`<div class="cal-dot cal-dot-event" title="${escapeHtml(item.name)}: Event"></div>`);
+    });
+    
+    // 2. Process each scheduled task on this day
     const processedTaskNames = new Set();
     dayScheduledFiltered.forEach(item => {
       processedTaskNames.add(item.name);
@@ -1730,7 +1842,7 @@ function renderCalendar(data) {
       }
     });
     
-    // 2. Process any remaining logs that don't match any scheduled task
+    // 3. Process any remaining logs that don't match any scheduled task
     dayLogsFiltered.forEach(log => {
       if (!processedTaskNames.has(log.task_name)) {
         if (log.success) {
@@ -1744,7 +1856,12 @@ function renderCalendar(data) {
     
     dotsHtml = dots.join('');
     
-    // Display the task titles for scheduled tasks
+    // Display the event titles first
+    dayEventsFiltered.forEach(item => {
+      labelsHtml += `<div class="cal-day-label cal-day-label-event">${escapeHtml(item.name)}</div>`;
+    });
+
+    // Display the task titles for scheduled tasks below events
     const schedTaskNames = [...new Set(dayScheduledFiltered.map(s => s.name))];
     schedTaskNames.forEach(name => {
       labelsHtml += `<div class="cal-day-label cal-day-label-scheduled">${escapeHtml(name)}</div>`;
@@ -1794,40 +1911,73 @@ function showDayDetail(day, data) {
   
   title.textContent = `${monthNames[data.month - 1]} ${day}, ${data.year}`;
   content.innerHTML = '';
-  
   const dayLogs = (data.logs && data.logs[day]) || [];
   const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
+  const dayEvents = (data.events && data.events[day]) || [];
   
   const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
   const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
   const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
   const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
+  const hideTasks = localStorage.getItem('cal_hide_tasks') === 'true';
+  const hideEvents = localStorage.getItem('cal_hide_events') === 'true';
   
-  const dayLogsFiltered = dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
-  const dayScheduledFiltered = dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
+  const dayLogsFiltered = hideTasks ? [] : dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
+  const dayScheduledFiltered = hideTasks ? [] : dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
+  const dayEventsFiltered = hideEvents ? [] : dayEvents;
   
-  if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0) {
+  if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0 && dayEventsFiltered.length === 0) {
     const hiddenList = [];
     if (hideDaily) hiddenList.push('daily');
     if (hideWeekly) hiddenList.push('weekly');
     if (hideMonthly) hiddenList.push('monthly');
     if (hideYearly) hiddenList.push('yearly');
-    const hiddenStr = hiddenList.length > 0 ? ` (${hiddenList.join(', ')} schedules hidden)` : '';
-    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs or scheduled tasks for this day${hiddenStr}.</p>`;
+    if (hideTasks) hiddenList.push('tasks');
+    if (hideEvents) hiddenList.push('events');
+    const hiddenStr = hiddenList.length > 0 ? ` (${hiddenList.join(', ')} hidden)` : '';
+    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs, scheduled tasks, or events for this day${hiddenStr}.</p>`;
     detailPanel.style.display = 'block';
     return;
   }
   
   let html = '';
+  let firstSectionAdded = false;
   
-  // 1. Scheduled Tasks Section
+  // 1. Events Section
+  if (dayEventsFiltered.length > 0) {
+    html += `
+      <div class="cal-detail-section" ${firstSectionAdded ? 'style="margin-top: 1.5rem;"' : ''}>
+        <h4 class="cal-detail-section-title">Events</h4>
+    `;
+    firstSectionAdded = true;
+    
+    dayEventsFiltered.sort((a, b) => a.event_date - b.event_date);
+    
+    dayEventsFiltered.forEach(item => {
+      const timeStr = new Date(item.event_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      html += `
+        <div class="cal-detail-item">
+          <div class="cal-dot cal-dot-event"></div>
+          <div class="cal-detail-item-info">
+            <div class="cal-detail-item-name">${escapeHtml(item.name)}</div>
+            <div class="cal-detail-item-meta">${timeStr} - ${escapeHtml(item.description || 'No description')}</div>
+          </div>
+        </div>
+      `;
+    });
+    
+    html += `</div>`;
+  }
+  
+  // 2. Scheduled Tasks Section
   if (dayScheduledFiltered.length > 0) {
     html += `
-      <div class="cal-detail-section">
+      <div class="cal-detail-section" ${firstSectionAdded ? 'style="margin-top: 1.5rem;"' : ''}>
         <h4 class="cal-detail-section-title">Scheduled Tasks</h4>
     `;
+    firstSectionAdded = true;
     
-    // Sort scheduled runs chronologically
     dayScheduledFiltered.sort((a, b) => a.fire_at - b.fire_at);
     
     dayScheduledFiltered.forEach(item => {
@@ -1851,14 +2001,14 @@ function showDayDetail(day, data) {
     html += `</div>`;
   }
   
-  // 2. Sent Logs Section
+  // 3. Sent Logs Section
   if (dayLogsFiltered.length > 0) {
     html += `
-      <div class="cal-detail-section" style="margin-top: 1.5rem;">
+      <div class="cal-detail-section" ${firstSectionAdded ? 'style="margin-top: 1.5rem;"' : ''}>
         <h4 class="cal-detail-section-title">Activity Logs</h4>
     `;
+    firstSectionAdded = true;
     
-    // Sort logs chronologically
     dayLogsFiltered.sort((a, b) => a.sent_at - b.sent_at);
     
     dayLogsFiltered.forEach(log => {
@@ -1866,8 +2016,7 @@ function showDayDetail(day, data) {
       const successBadge = log.success
         ? '<span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><polyline points="20 6 9 17 4 12"></polyline></svg>Sent</span>'
         : `<span class="badge badge-danger" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;" title="${escapeHtml(log.error_msg || '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Failed</span>`;
-
-      // Build detail lines for error/API response
+ 
       let detailHtml = '';
       if (!log.success && log.error_msg) {
         detailHtml += `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 2px;">Error: ${escapeHtml(log.error_msg)}</div>`;
@@ -1893,12 +2042,320 @@ function showDayDetail(day, data) {
         </div>
       `;
     });
-    
     html += `</div>`;
   }
   
   content.innerHTML = html;
   detailPanel.style.display = 'block';
+}
+
+// ---------------------------------------------------------------
+// EVENTS
+// ---------------------------------------------------------------
+async function refreshEvents(silent = false) {
+  if (!apiToken) return;
+  
+  if (cachedEvents && cachedEvents.length > 0) {
+    applyEventFilterAndRender();
+  }
+  
+  try {
+    const res = await fetch('/api/events', {
+      headers: { 'Authorization': `Bearer ${apiToken}` }
+    });
+    
+    if (!res.ok) {
+      if (res.status === 401) logout();
+      return;
+    }
+    
+    const events = await res.json();
+    cachedEvents = events;
+    toggleConnectionBanner(false);
+    
+    applyEventFilterAndRender();
+  } catch (err) {
+    console.error('Error refreshing events:', err);
+    toggleConnectionBanner(true);
+  }
+}
+
+function applyEventFilterAndRender() {
+  let filtered = cachedEvents;
+  
+  // Filter by event search query
+  if (eventSearchQuery) {
+    filtered = filtered.filter(e => {
+      const nameMatch = e.name && e.name.toLowerCase().includes(eventSearchQuery);
+      const descMatch = e.description && e.description.toLowerCase().includes(eventSearchQuery);
+      return nameMatch || descMatch;
+    });
+  }
+  
+  // Filter by upcoming / past selection
+  const now = Date.now();
+  if (currentEventFilter === 'upcoming') {
+    filtered = filtered.filter(e => e.event_date >= now);
+    // Sort upcoming events in ascending order (soonest first)
+    filtered.sort((a, b) => a.event_date - b.event_date);
+  } else if (currentEventFilter === 'past') {
+    filtered = filtered.filter(e => e.event_date < now);
+    // Sort past events in descending order (most recent first)
+    filtered.sort((a, b) => b.event_date - a.event_date);
+  }
+  
+  const summaryText = document.getElementById('eventSummaryText');
+  if (summaryText) {
+    if (cachedEvents.length === 0) {
+      summaryText.textContent = 'No events scheduled';
+    } else {
+      const searchLabel = eventSearchQuery ? ` matching "${eventSearchQuery}"` : '';
+      const filterLabel = currentEventFilter === 'upcoming' ? 'Upcoming' : 'Past';
+      summaryText.textContent = `${filtered.length} of ${cachedEvents.length} event${cachedEvents.length === 1 ? '' : 's'} shown (${filterLabel})${searchLabel}`;
+    }
+  }
+  
+  renderEventsList(filtered);
+}
+
+function renderEventsList(events) {
+  const tableContainer = document.getElementById('eventsTableContainer');
+  const emptyState = document.getElementById('eventsEmptyState');
+  const tbody = document.getElementById('eventsTableBody');
+  
+  tbody.innerHTML = '';
+  
+  if (events.length === 0) {
+    if (tableContainer) tableContainer.style.display = 'none';
+    if (emptyState) {
+      emptyState.style.display = 'block';
+    }
+    return;
+  }
+  
+  if (tableContainer) tableContainer.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
+  
+  events.forEach(event => {
+    const tr = document.createElement('tr');
+    
+    const eventDate = new Date(event.event_date).toLocaleString();
+    
+    const offsetDescs = (event.reminders || []).map(offset => {
+      if (offset === 172800) return '48h before';
+      if (offset === 86400) return '24h before';
+      if (offset === 7200) return '2h before';
+      if (offset === 3600) return '1h before';
+      if (offset === 0) return 'At start';
+      
+      const absOffset = Math.abs(offset);
+      const suffix = offset > 0 ? 'before' : 'after';
+      
+      if (absOffset % 86400 === 0) {
+        return `${absOffset / 86400}d ${suffix}`;
+      }
+      if (absOffset % 3600 === 0) {
+        return `${absOffset / 3600}h ${suffix}`;
+      }
+      return `${Math.round(absOffset / 60)}m ${suffix}`;
+    });
+    
+    const remindersText = offsetDescs.length > 0
+      ? offsetDescs.map(d => `<span class="badge badge-primary">${d}</span>`).join(' ')
+      : '<span style="color: var(--text-muted); font-size: 0.8rem;">No reminders</span>';
+
+    const actionBtns = `
+      <button class="btn btn-secondary btn-sm" onclick="openEventDialog('${event.id}')" title="Edit" style="padding: 0.35rem 0.5rem;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+      </button>
+      <button class="btn btn-danger btn-sm" onclick="deleteEvent('${event.id}')" title="Delete" style="padding: 0.35rem 0.5rem;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+      </button>
+    `;
+
+    tr.innerHTML = `
+      <td>
+        <div class="td-name">${escapeHtml(event.name)}</div>
+        <div class="td-meta" style="margin-top: 0.25rem;">${eventDate}</div>
+      </td>
+      <td class="td-msg" title="${escapeHtml(event.description || '')}">
+        ${escapeHtml(event.description || '—')}
+      </td>
+      <td>
+        <div style="display: flex; gap: 0.25rem; flex-wrap: wrap;">
+          ${remindersText}
+        </div>
+      </td>
+      <td>
+        <div style="display: flex; justify-content: flex-end; gap: 0.35rem;">
+          ${actionBtns}
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+window.deleteEvent = async function(eventId) {
+  if (!confirm('Delete this event? All its WhatsApp reminders will be deleted too.')) return;
+  try {
+    const res = await fetch(`/api/events/${eventId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${apiToken}` }
+    });
+    if (res.ok) {
+      refreshEvents();
+      refreshTasks(true);
+      refreshStats();
+    }
+  } catch (err) {
+    console.error('Error deleting event:', err);
+  }
+};
+
+window.openEventDialog = function(eventId = null) {
+  const form = document.getElementById('eventForm');
+  form.reset();
+  
+  const idField = document.getElementById('eventIdField');
+  const title = document.getElementById('eventDialogTitle');
+  
+  document.querySelectorAll('#eventForm input[name="eventReminder"]').forEach(cb => cb.checked = false);
+  
+  const customCb = document.getElementById('eventReminderCustomCheckbox');
+  const customValInput = document.getElementById('eventReminderCustomValue');
+  const customUnitSelect = document.getElementById('eventReminderCustomUnit');
+  const customRelationSelect = document.getElementById('eventReminderCustomRelation');
+  if (customCb) customCb.checked = false;
+  if (customValInput) customValInput.value = '';
+  if (customUnitSelect) customUnitSelect.value = '3600';
+  if (customRelationSelect) customRelationSelect.value = 'before';
+  
+  if (eventId) {
+    const event = cachedEvents.find(e => e.id === eventId);
+    if (!event) return;
+    
+    title.textContent = 'Edit Event';
+    idField.value = event.id;
+    document.getElementById('eventName').value = event.name;
+    document.getElementById('eventDescription').value = event.description || '';
+    if (event.event_date) {
+      const date = new Date(event.event_date);
+      const tzOffset = date.getTimezoneOffset() * 60000;
+      const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+      document.getElementById('eventDate').value = localISOTime;
+    }
+    
+    const standardOffsets = [172800, 86400, 7200, 3600, 0];
+    if (event.reminders && Array.isArray(event.reminders)) {
+      event.reminders.forEach(offset => {
+        if (standardOffsets.includes(offset)) {
+          const cb = document.querySelector(`#eventForm input[name="eventReminder"][value="${offset}"]`);
+          if (cb) cb.checked = true;
+        } else {
+          if (customCb && customValInput && customUnitSelect && customRelationSelect) {
+            customCb.checked = true;
+            const suffix = offset >= 0 ? 'before' : 'after';
+            customRelationSelect.value = suffix;
+            
+            const absOffset = Math.abs(offset);
+            if (absOffset % 86400 === 0) {
+              customUnitSelect.value = '86400';
+              customValInput.value = absOffset / 86400;
+            } else if (absOffset % 3600 === 0) {
+              customUnitSelect.value = '3600';
+              customValInput.value = absOffset / 3600;
+            } else {
+              customUnitSelect.value = '60';
+              customValInput.value = Math.round(absOffset / 60);
+            }
+          }
+        }
+      });
+    }
+  } else {
+    title.textContent = 'Create Event';
+    idField.value = '';
+  }
+  
+  document.getElementById('eventDialog').showModal();
+};
+
+async function handleEventFormSubmit(e) {
+  e.preventDefault();
+  const eventId = document.getElementById('eventIdField').value;
+  const name = document.getElementById('eventName').value.trim();
+  const eventDateStr = document.getElementById('eventDate').value;
+  const description = document.getElementById('eventDescription').value.trim();
+  
+  if (!eventDateStr) return alert('Please select a date and time.');
+  const eventDate = new Date(eventDateStr).toISOString();
+
+  const reminders = [];
+  document.querySelectorAll('#eventForm input[name="eventReminder"]:checked').forEach(cb => {
+    reminders.push(parseInt(cb.value, 10));
+  });
+
+  const customCb = document.getElementById('eventReminderCustomCheckbox');
+  const customValInput = document.getElementById('eventReminderCustomValue');
+  const customUnitSelect = document.getElementById('eventReminderCustomUnit');
+  const customRelationSelect = document.getElementById('eventReminderCustomRelation');
+  if (customCb && customCb.checked) {
+    if (!customValInput || !customValInput.value) {
+      return alert('Please enter the custom reminder value.');
+    }
+    const val = parseFloat(customValInput.value);
+    const unit = parseInt(customUnitSelect.value || '3600', 10);
+    const isAfter = customRelationSelect && customRelationSelect.value === 'after';
+    
+    if (!isNaN(val) && val > 0) {
+      let offset = Math.round(val * unit);
+      if (isAfter) {
+        offset = -offset;
+      }
+      reminders.push(offset);
+    } else {
+      return alert('Please enter a valid positive number for custom reminder.');
+    }
+  }
+
+  const payload = { name, eventDate, description, reminders };
+  const alertEl = document.getElementById('eventsAlertContainer');
+  if (alertEl) alertEl.innerHTML = '';
+  const submitBtn = document.getElementById('eventFormSubmitBtn');
+  submitBtn.disabled = true;
+
+  try {
+    let res;
+    if (eventId) {
+      res = await fetch(`/api/events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('eventDialog').close();
+      refreshEvents();
+      refreshTasks(true);
+      refreshStats();
+      if (alertEl) showAlert(alertEl, 'success', `Event ${eventId ? 'updated' : 'created'}!`);
+    } else {
+      alert(data.error || 'Failed to save event.');
+    }
+  } catch (err) {
+    alert('Network error.');
+  } finally {
+    submitBtn.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------
@@ -1936,6 +2393,8 @@ async function loadSettings() {
   if (editWaBtn) editWaBtn.style.display = 'inline-block';
   if (saveWaBtn) saveWaBtn.style.display = 'none';
   if (cancelWaBtn) cancelWaBtn.style.display = 'none';
+  
+  await loadInstructions();
 }
 
 async function loadInstructions() {

@@ -390,6 +390,11 @@ textarea:disabled {
   background-color: rgba(15, 23, 42, 0.8);
 }
 
+select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
 .input::placeholder {
   color: #475569;
 }
@@ -497,6 +502,11 @@ tr:hover td {
   font-weight: 500;
   border-radius: 9999px;
   line-height: 1;
+}
+
+.badge-xs {
+  font-size: 0.625rem !important;
+  padding: 0.08rem 0.35rem !important;
 }
 
 .badge-success {
@@ -1024,6 +1034,50 @@ dialog::backdrop {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
+/* Select Styling */
+.select-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.select-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 2.25rem !important;
+  background-color: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: all 0.2s ease;
+}
+
+.select-input:hover {
+  border-color: var(--border-strong);
+  background-color: rgba(15, 23, 42, 0.8);
+}
+
+.select-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+  background-color: rgba(15, 23, 42, 0.8);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.select-input:focus + .select-arrow {
+  transform: translateY(-50%) rotate(180deg);
+  color: var(--accent);
+}
+
 .calendar-month-label {
   font-family: 'Outfit', sans-serif;
   font-size: 1.15rem;
@@ -1077,7 +1131,7 @@ dialog::backdrop {
 
 .calendar-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   background: rgba(15, 23, 42, 0.5);
   border-bottom: 1px solid var(--border);
 }
@@ -1094,7 +1148,7 @@ dialog::backdrop {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .cal-day {
@@ -1197,6 +1251,12 @@ dialog::backdrop {
   box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
 }
 
+.cal-dot-event {
+  background: #0ea5e9;
+  box-shadow: 0 0 4px rgba(14, 165, 233, 0.5);
+  border: 1.5px solid transparent;
+}
+
 .cal-day-labels {
   margin-top: 0.15rem;
   display: flex;
@@ -1218,6 +1278,11 @@ dialog::backdrop {
 .cal-day-label-scheduled {
   background: rgba(99, 102, 241, 0.15);
   color: #a5b4fc;
+}
+
+.cal-day-label-event {
+  background: rgba(14, 165, 233, 0.15);
+  color: #7dd3fc;
 }
 
 .cal-day-label-sent {

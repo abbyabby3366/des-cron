@@ -56,6 +56,8 @@ const taskSchema = new mongoose.Schema({
   message_template_2: { type: String, default: '' },
   last_run_at:        { type: Number, default: null },
   next_run_at:        { type: Number, default: null, index: true },
+  event_id:           { type: mongoose.Schema.Types.ObjectId, ref: 'CalEvent', default: null, index: true },
+  event_reminder_offset: { type: Number, default: null },
   created_at:         { type: Number, required: true },
   updated_at:         { type: Number, required: true }
 });
@@ -77,10 +79,23 @@ const sendLogSchema = new mongoose.Schema({
 sendLogSchema.set('toJSON', { virtuals: true });
 sendLogSchema.set('toObject', { virtuals: true });
 
-export const User    = mongoose.model('User', userSchema);
-export const Session = mongoose.model('Session', sessionSchema);
-export const Task    = mongoose.model('Task', taskSchema);
-export const SendLog = mongoose.model('SendLog', sendLogSchema);
+const calEventSchema = new mongoose.Schema({
+  owner_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  name:          { type: String, required: true },
+  description:   { type: String, default: '' },
+  event_date:    { type: Number, required: true, index: true },
+  reminders:     { type: [Number], default: [] },
+  created_at:    { type: Number, required: true },
+  updated_at:    { type: Number, required: true }
+});
+calEventSchema.set('toJSON', { virtuals: true });
+calEventSchema.set('toObject', { virtuals: true });
+
+export const User     = mongoose.model('User', userSchema);
+export const Session  = mongoose.model('Session', sessionSchema);
+export const Task     = mongoose.model('Task', taskSchema);
+export const SendLog  = mongoose.model('SendLog', sendLogSchema);
+export const CalEvent = mongoose.model('CalEvent', calEventSchema);
 
 // ---------------------------------------------------------------
 // CONNECTION + SEED
