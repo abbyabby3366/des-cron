@@ -883,8 +883,8 @@ function setupEventListeners() {
     refreshCalendar();
   });
 
-  // Calendar Toggles: daily, weekly, monthly, yearly, tasks, events
-  ['daily', 'weekly', 'monthly', 'yearly', 'tasks', 'events'].forEach(type => {
+  // Calendar Toggles: daily, weekly, monthly, yearly, tasks, events, reminders
+  ['daily', 'weekly', 'monthly', 'yearly', 'tasks', 'events', 'reminders'].forEach(type => {
     const capType = type.charAt(0).toUpperCase() + type.slice(1);
     const toggleBtn = document.getElementById(`calToggle${capType}Btn`);
     if (toggleBtn) {
@@ -1726,6 +1726,10 @@ function shouldShowItem(item, hideDaily, hideWeekly, hideMonthly, hideYearly) {
   return true;
 }
 
+function isCalendarReminder(item) {
+  return !!item.event_id || (item.name && item.name.startsWith('Reminder:')) || (item.task_name && item.task_name.startsWith('Reminder:'));
+}
+
 function updateToggleBtnState(type, hide) {
   const capType = type.charAt(0).toUpperCase() + type.slice(1);
   const btn = document.getElementById(`calToggle${capType}Btn`);
@@ -1791,6 +1795,7 @@ function renderCalendar(data) {
   const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
   const hideTasks = localStorage.getItem('cal_hide_tasks') === 'true';
   const hideEvents = localStorage.getItem('cal_hide_events') === 'true';
+  const hideReminders = localStorage.getItem('cal_hide_reminders') === 'true';
 
   // Render current month days
   for (let day = 1; day <= totalDays; day++) {
@@ -1809,8 +1814,18 @@ function renderCalendar(data) {
     const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
     const dayEvents = (data.events && data.events[day]) || [];
     
-    const dayLogsFiltered = hideTasks ? [] : dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
-    const dayScheduledFiltered = hideTasks ? [] : dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
+    const dayLogsFiltered = hideTasks
+      ? []
+      : dayLogs.filter(l => {
+          if (hideReminders && isCalendarReminder(l)) return false;
+          return shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly);
+        });
+    const dayScheduledFiltered = hideTasks
+      ? []
+      : dayScheduled.filter(s => {
+          if (hideReminders && isCalendarReminder(s)) return false;
+          return shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly);
+        });
     const dayEventsFiltered = hideEvents ? [] : dayEvents;
     
     let dotsHtml = '';
@@ -1915,27 +1930,12 @@ function showDayDetail(day, data) {
   const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
   const dayEvents = (data.events && data.events[day]) || [];
   
-  const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
-  const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
-  const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
-  const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
-  const hideTasks = localStorage.getItem('cal_hide_tasks') === 'true';
-  const hideEvents = localStorage.getItem('cal_hide_events') === 'true';
-  
-  const dayLogsFiltered = hideTasks ? [] : dayLogs.filter(l => shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly));
-  const dayScheduledFiltered = hideTasks ? [] : dayScheduled.filter(s => shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly));
-  const dayEventsFiltered = hideEvents ? [] : dayEvents;
+  const dayLogsFiltered = dayLogs;
+  const dayScheduledFiltered = dayScheduled;
+  const dayEventsFiltered = dayEvents;
   
   if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0 && dayEventsFiltered.length === 0) {
-    const hiddenList = [];
-    if (hideDaily) hiddenList.push('daily');
-    if (hideWeekly) hiddenList.push('weekly');
-    if (hideMonthly) hiddenList.push('monthly');
-    if (hideYearly) hiddenList.push('yearly');
-    if (hideTasks) hiddenList.push('tasks');
-    if (hideEvents) hiddenList.push('events');
-    const hiddenStr = hiddenList.length > 0 ? ` (${hiddenList.join(', ')} hidden)` : '';
-    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs, scheduled tasks, or events for this day${hiddenStr}.</p>`;
+    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs, scheduled tasks, or events for this day.</p>`;
     detailPanel.style.display = 'block';
     return;
   }

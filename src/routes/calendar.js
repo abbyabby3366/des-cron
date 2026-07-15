@@ -36,7 +36,8 @@ router.get('/', authenticateToken, async (req, res) => {
     for (const t of allTasks) {
       taskMap[t._id.toString()] = {
         task_type: t.task_type,
-        schedule_spec: t.schedule_spec
+        schedule_spec: t.schedule_spec,
+        event_id: t.event_id
       };
 
       if (['Active', 'Paused', 'Firing'].includes(t.status)) {
@@ -64,7 +65,8 @@ router.get('/', authenticateToken, async (req, res) => {
         sent_at: log.sent_at,
         task_type: taskMeta.task_type,
         expression: taskMeta.schedule_spec?.expression,
-        interval_secs: taskMeta.schedule_spec?.interval_secs
+        interval_secs: taskMeta.schedule_spec?.interval_secs,
+        event_id: taskMeta.event_id
       });
     }
 
@@ -84,7 +86,8 @@ router.get('/', authenticateToken, async (req, res) => {
               name: task.name,
               task_type: task.task_type,
               status: task.status,
-              fire_at: runAt.getTime()
+              fire_at: runAt.getTime(),
+              event_id: task.event_id
             });
           }
         }
@@ -111,7 +114,8 @@ router.get('/', authenticateToken, async (req, res) => {
                   task_type: task.task_type,
                   status: task.status,
                   expression: spec.expression,
-                  fire_at: fireMs
+                  fire_at: fireMs,
+                  event_id: task.event_id
                 });
               }
               count++;
@@ -148,7 +152,8 @@ router.get('/', authenticateToken, async (req, res) => {
                 task_type: task.task_type,
                 status: task.status,
                 interval_secs: intervalSecs,
-                fire_at: cursor
+                fire_at: cursor,
+                event_id: task.event_id
               });
             }
           }
@@ -168,7 +173,8 @@ router.get('/', authenticateToken, async (req, res) => {
           name: task.name,
           task_type: task.task_type,
           status: task.status,
-          fire_at: task.last_run_at
+          fire_at: task.last_run_at,
+          event_id: task.event_id
         });
       }
     }
