@@ -1,11 +1,12 @@
 import cronParser from 'cron-parser';
-import { Task, SendLog } from './database.js';
+import { Task, SendLog, CalEvent, User } from './database.js';
 import { resolvePlaceholders } from './helpers/bnm_helper.js';
+import { computeNextOccurrence, syncEventReminders } from './helpers/event_helper.js';
 
 // ---------------------------------------------------------------
-// WhatsApp API helper
+// WhatsApp API helper (with timeout & transient retry)
 // ---------------------------------------------------------------
-export async function sendWhatsAppMessage(number, message) {
+export async function sendWhatsAppMessage(number, message, maxRetries = 2) {
   if (!number) throw new Error('No phone number specified');
   if (!message) throw new Error('No message body specified');
 
@@ -13,42 +14,58 @@ export async function sendWhatsAppMessage(number, message) {
 
   console.log(`[WA-API] Sending to ${number}: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
 
-  let res;
-  let rawBody;
-  try {
-    res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ number, message })
-    });
-    rawBody = await res.text();
-  } catch (fetchErr) {
-    console.error(`[WA-API] Network/fetch error:`, fetchErr.message);
-    throw new Error(`Network error: ${fetchErr.message}`);
+  let lastErr = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delayMs = attempt * 1500;
+      console.warn(`[WA-API] Retry ${attempt}/${maxRetries} for ${number} after ${delayMs}ms...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+
+    let res;
+    let rawBody;
+    try {
+      res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number, message }),
+        signal: AbortSignal.timeout(15000)
+      });
+      rawBody = await res.text();
+    } catch (fetchErr) {
+      console.error(`[WA-API] Network/fetch error (attempt ${attempt + 1}):`, fetchErr.message);
+      lastErr = new Error(`Network error: ${fetchErr.message}`);
+      continue;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(rawBody);
+    } catch (parseErr) {
+      console.error(`[WA-API] Non-JSON response (HTTP ${res.status}):`, rawBody.substring(0, 500));
+      lastErr = new Error(`API returned non-JSON (HTTP ${res.status}): ${rawBody.substring(0, 200)}`);
+      if (res.status >= 500) continue;
+      throw lastErr;
+    }
+
+    console.log(`[WA-API] Response (HTTP ${res.status}):`, JSON.stringify(data));
+
+    if (!res.ok) {
+      const errMsg = data.error || data.details || data.message || `HTTP ${res.status}`;
+      lastErr = new Error(errMsg);
+      if (res.status >= 500 || res.status === 429) continue;
+      throw lastErr;
+    }
+
+    if (data.success !== true && !data.messageId) {
+      const errMsg = data.error || data.details || data.message || 'API did not confirm success';
+      throw new Error(errMsg);
+    }
+
+    return data;
   }
 
-  let data;
-  try {
-    data = JSON.parse(rawBody);
-  } catch (parseErr) {
-    console.error(`[WA-API] Non-JSON response (HTTP ${res.status}):`, rawBody.substring(0, 500));
-    throw new Error(`API returned non-JSON (HTTP ${res.status}): ${rawBody.substring(0, 200)}`);
-  }
-
-  console.log(`[WA-API] Response (HTTP ${res.status}):`, JSON.stringify(data));
-
-  if (!res.ok) {
-    const errMsg = data.error || data.details || data.message || `HTTP ${res.status}`;
-    throw new Error(errMsg);
-  }
-
-  if (data.success !== true && !data.messageId) {
-    const errMsg = data.error || data.details || data.message || 'API did not confirm success';
-    throw new Error(errMsg);
-  }
-
-  // Return the full API response data for logging
-  return data;
+  throw lastErr || new Error('Failed to send WhatsApp message');
 }
 
 // ---------------------------------------------------------------
@@ -63,7 +80,8 @@ export function calculateNextRun(taskType, scheduleSpec, fromTime = Date.now()) 
   }
 
   if (taskType === 'Interval') {
-    const secs = parseInt(spec.interval_secs, 10) || 3600;
+    const secs = parseInt(spec.interval_secs, 10);
+    if (!secs || secs <= 0) return null;
     return fromTime + secs * 1000;
   }
 
@@ -83,129 +101,215 @@ export function calculateNextRun(taskType, scheduleSpec, fromTime = Date.now()) 
   return null;
 }
 
+export function calculateNextNRuns(taskType, scheduleSpec, count = 3, fromTime = Date.now()) {
+  const spec = typeof scheduleSpec === 'string' ? JSON.parse(scheduleSpec) : scheduleSpec;
+  const runs = [];
+
+  if (taskType === 'OneTime') {
+    if (spec.run_at) {
+      const t = new Date(spec.run_at).getTime();
+      if (!isNaN(t)) runs.push(t);
+    }
+    return runs;
+  }
+
+  if (taskType === 'Interval') {
+    const secs = parseInt(spec.interval_secs, 10);
+    if (!secs || secs <= 0) return runs;
+    for (let i = 1; i <= count; i++) {
+      runs.push(fromTime + i * secs * 1000);
+    }
+    return runs;
+  }
+
+  if (taskType === 'Cron') {
+    const interval = cronParser.parseExpression(spec.expression, {
+      currentDate: new Date(fromTime),
+      tz: process.env.TZ || 'Asia/Kuala_Lumpur'
+    });
+    for (let i = 0; i < count; i++) {
+      runs.push(interval.next().toDate().getTime());
+    }
+    return runs;
+  }
+
+  return runs;
+}
+
 // ---------------------------------------------------------------
-// Scheduler tick
+// Shared Task Execution Helper (used by Scheduler & Run Now)
 // ---------------------------------------------------------------
-let schedulerInterval = null;
+export async function executeTaskSends(task, now = Date.now()) {
+  let allSucceeded = true;
+  let sentCount = 0;
+  let failedCount = 0;
+  let lastError = null;
+  const targetList = task.target_list || [];
 
-async function tick() {
-  const now = Date.now();
+  // 1. Send personal message to owner's WhatsApp JID
+  if (task.target_wa_chat_id && task.message_template) {
+    let resolvedMsg = task.message_template;
+    try {
+      resolvedMsg = await resolvePlaceholders(task.message_template);
+      const apiRes = await sendWhatsAppMessage(task.target_wa_chat_id, resolvedMsg);
+      console.log(`[Scheduler]   ✓ Personal msg sent to ${task.target_wa_chat_id}`);
+      sentCount++;
+      await SendLog.create({
+        task_id: task._id,
+        task_name: task.name,
+        owner_user_id: task.owner_user_id,
+        target_jid: task.target_wa_chat_id,
+        message: resolvedMsg,
+        success: true,
+        api_response: JSON.stringify(apiRes),
+        sent_at: now
+      });
+    } catch (err) {
+      console.error(`[Scheduler]   ✗ Personal msg failed:`, err.message);
+      allSucceeded = false;
+      failedCount++;
+      lastError = err.message;
+      await SendLog.create({
+        task_id: task._id,
+        task_name: task.name,
+        owner_user_id: task.owner_user_id,
+        target_jid: task.target_wa_chat_id,
+        message: resolvedMsg,
+        success: false,
+        error_msg: err.message,
+        sent_at: now
+      });
+    }
+  }
 
-  // Find all active tasks whose next_run_at has passed
-  const firingTasks = await Task.find({
-    status: 'Active',
-    next_run_at: { $ne: null, $lte: now }
-  });
+  // 2. Send broadcast messages to extra recipients
+  const broadcastMsg = task.message_template_2 || task.message_template;
+  if (broadcastMsg && targetList.length > 0) {
+    let resolvedBroadcastMsg = broadcastMsg;
+    try {
+      resolvedBroadcastMsg = await resolvePlaceholders(broadcastMsg);
+    } catch (err) {
+      console.error(`[Scheduler]   ✗ Failed to resolve broadcast template:`, err.message);
+    }
 
-  for (const task of firingTasks) {
-    console.log(`[Scheduler] Firing task "${task.name}" (${task._id}) [${task.task_type}]`);
-
-    // Mark as Firing
-    task.status = 'Firing';
-    task.last_run_at = now;
-    task.updated_at = now;
-    await task.save();
-
-    let allSucceeded = true;
-    const targetList = task.target_list || [];
-
-    // 1. Send personal message to owner's WhatsApp JID
-    if (task.target_wa_chat_id && task.message_template) {
-      let resolvedMsg = task.message_template;
+    for (const jid of targetList) {
+      const trimJid = (jid || '').trim();
+      if (!trimJid) continue;
       try {
-        resolvedMsg = await resolvePlaceholders(task.message_template);
-        const apiRes = await sendWhatsAppMessage(task.target_wa_chat_id, resolvedMsg);
-        console.log(`[Scheduler]   ✓ Personal msg sent to ${task.target_wa_chat_id}`);
+        const apiRes = await sendWhatsAppMessage(trimJid, resolvedBroadcastMsg);
+        console.log(`[Scheduler]   ✓ Broadcast sent to ${trimJid}`);
+        sentCount++;
         await SendLog.create({
           task_id: task._id,
           task_name: task.name,
           owner_user_id: task.owner_user_id,
-          target_jid: task.target_wa_chat_id,
-          message: resolvedMsg,
+          target_jid: trimJid,
+          message: resolvedBroadcastMsg,
           success: true,
           api_response: JSON.stringify(apiRes),
           sent_at: now
         });
       } catch (err) {
-        console.error(`[Scheduler]   ✗ Personal msg failed:`, err.message);
+        console.error(`[Scheduler]   ✗ Broadcast to ${trimJid} failed:`, err.message);
         allSucceeded = false;
+        failedCount++;
+        lastError = err.message;
         await SendLog.create({
           task_id: task._id,
           task_name: task.name,
           owner_user_id: task.owner_user_id,
-          target_jid: task.target_wa_chat_id,
-          message: resolvedMsg,
+          target_jid: trimJid,
+          message: resolvedBroadcastMsg,
           success: false,
           error_msg: err.message,
           sent_at: now
         });
       }
     }
+  }
 
-    // 2. Send broadcast messages to extra recipients
-    const broadcastMsg = task.message_template_2 || task.message_template;
-    if (broadcastMsg && targetList.length > 0) {
-      let resolvedBroadcastMsg = broadcastMsg;
-      try {
-        resolvedBroadcastMsg = await resolvePlaceholders(broadcastMsg);
-      } catch (err) {
-        console.error(`[Scheduler]   ✗ Failed to resolve broadcast template:`, err.message);
+  return { allSucceeded, sentCount, failedCount, lastError };
+}
+
+// ---------------------------------------------------------------
+// Scheduler tick
+// ---------------------------------------------------------------
+let schedulerInterval = null;
+let isTickRunning = false;
+
+async function tick() {
+  if (isTickRunning) return;
+  isTickRunning = true;
+
+  try {
+    const now = Date.now();
+
+    // Find all active tasks whose next_run_at has passed
+    const firingTasks = await Task.find({
+      status: 'Active',
+      next_run_at: { $ne: null, $lte: now }
+    });
+
+    for (const task of firingTasks) {
+      console.log(`[Scheduler] Firing task "${task.name}" (${task._id}) [${task.task_type}]`);
+
+      // Atomically claim task as Firing
+      const claimed = await Task.findOneAndUpdate(
+        { _id: task._id, status: 'Active' },
+        { $set: { status: 'Firing', last_run_at: now, updated_at: now } },
+        { new: true }
+      );
+      if (!claimed) continue;
+
+      const { allSucceeded } = await executeTaskSends(claimed, now);
+
+      // Determine next status and schedule
+      let nextStatus = 'Active';
+      if (claimed.task_type === 'OneTime') {
+        nextStatus = allSucceeded ? 'Completed' : 'Failed';
       }
 
-      for (const jid of targetList) {
-        const trimJid = (jid || '').trim();
-        if (!trimJid) continue;
-        try {
-          const apiRes = await sendWhatsAppMessage(trimJid, resolvedBroadcastMsg);
-          console.log(`[Scheduler]   ✓ Broadcast sent to ${trimJid}`);
-          await SendLog.create({
-            task_id: task._id,
-            task_name: task.name,
-            owner_user_id: task.owner_user_id,
-            target_jid: trimJid,
-            message: resolvedBroadcastMsg,
-            success: true,
-            api_response: JSON.stringify(apiRes),
-            sent_at: now
-          });
-        } catch (err) {
-          console.error(`[Scheduler]   ✗ Broadcast to ${trimJid} failed:`, err.message);
-          allSucceeded = false;
-          await SendLog.create({
-            task_id: task._id,
-            task_name: task.name,
-            owner_user_id: task.owner_user_id,
-            target_jid: trimJid,
-            message: resolvedBroadcastMsg,
-            success: false,
-            error_msg: err.message,
-            sent_at: now
-          });
-        }
+      const nextRun = (nextStatus === 'Active')
+        ? calculateNextRun(claimed.task_type, claimed.schedule_spec, now)
+        : null;
+
+      claimed.status = nextStatus;
+      claimed.next_run_at = nextRun;
+      claimed.updated_at = Date.now();
+      await claimed.save();
+
+      if (!allSucceeded && claimed.task_type !== 'OneTime') {
+        console.warn(`[Scheduler] Task "${claimed.name}" had send failures but will retry on next schedule.`);
+      }
+      console.log(`[Scheduler] Task "${claimed.name}" done → ${nextStatus}. Next: ${nextRun ? new Date(nextRun).toISOString() : 'None'}`);
+    }
+
+    // Roll forward past recurring CalEvents whose reminders have completed
+    const passedRecurringEvents = await CalEvent.find({
+      recurrence: { $in: ['Weekly', 'Monthly', 'Yearly'] },
+      event_date: { $lte: now }
+    });
+
+    for (const ev of passedRecurringEvents) {
+      const pendingReminders = await Task.countDocuments({
+        event_id: ev._id,
+        status: { $in: ['Active', 'Firing'] }
+      });
+      if (pendingReminders > 0) continue;
+
+      const nextDate = computeNextOccurrence(ev.event_date, ev.recurrence, now);
+      if (nextDate && nextDate > ev.event_date) {
+        console.log(`[Scheduler] Rolling recurring event "${ev.name}" (${ev.recurrence}) to ${new Date(nextDate).toISOString()}`);
+        ev.event_date = nextDate;
+        ev.updated_at = now;
+        await ev.save();
+
+        const ownerUser = await User.findById(ev.owner_user_id);
+        await syncEventReminders(ev, ownerUser);
       }
     }
-
-    // 3. Determine next status and schedule
-    let nextStatus = 'Active';
-    if (task.task_type === 'OneTime') {
-      nextStatus = allSucceeded ? 'Completed' : 'Failed';
-    }
-    // For Cron/Interval: always stay Active and reschedule,
-    // even if a send failed (transient failures shouldn't kill recurring tasks)
-
-    const nextRun = (nextStatus === 'Active')
-      ? calculateNextRun(task.task_type, task.schedule_spec, now)
-      : null;
-
-    task.status = nextStatus;
-    task.next_run_at = nextRun;
-    task.updated_at = now;
-    await task.save();
-
-    if (!allSucceeded && task.task_type !== 'OneTime') {
-      console.warn(`[Scheduler] Task "${task.name}" had send failures but will retry on next schedule.`);
-    }
-    console.log(`[Scheduler] Task "${task.name}" done → ${nextStatus}. Next: ${nextRun ? new Date(nextRun).toISOString() : 'None'}`);
+  } finally {
+    isTickRunning = false;
   }
 }
 
@@ -214,13 +318,26 @@ export async function startScheduler(intervalMs = 5000) {
 
   console.log(`[Scheduler] Started (polling every ${intervalMs / 1000}s)`);
 
-  // Recalculate next run times for active Cron tasks on startup to align with new timezone logic
+  // Recover any orphaned Firing tasks from a previous unclean shutdown
+  try {
+    const recovered = await Task.updateMany(
+      { status: 'Firing' },
+      { $set: { status: 'Active', updated_at: Date.now() } }
+    );
+    if (recovered.modifiedCount > 0) {
+      console.log(`[Scheduler] Recovered ${recovered.modifiedCount} task(s) stuck in Firing state.`);
+    }
+  } catch (err) {
+    console.error('[Scheduler] Failed to recover Firing tasks:', err.message);
+  }
+
+  // Recalculate next run times for active Cron tasks on startup to align with timezone logic
   try {
     const activeCronTasks = await Task.find({ status: 'Active', task_type: 'Cron' });
     for (const task of activeCronTasks) {
       const correctNextRun = calculateNextRun(task.task_type, task.schedule_spec, Date.now());
       if (correctNextRun && correctNextRun !== task.next_run_at) {
-        console.log(`[Scheduler] Adjusting next run for Cron task "${task.name}" (${task._id}) from ${task.next_run_at ? new Date(task.next_run_at).toLocaleString() : 'None'} to ${new Date(correctNextRun).toLocaleString()}`);
+        console.log(`[Scheduler] Adjusting next run for Cron task "${task.name}" (${task._id}) from ${task.next_run_at ? new Date(task.next_run_at).toISOString() : 'None'} to ${new Date(correctNextRun).toISOString()}`);
         task.next_run_at = correctNextRun;
         task.updated_at = Date.now();
         await task.save();

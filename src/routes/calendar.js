@@ -25,7 +25,10 @@ router.get('/', authenticateToken, async (req, res) => {
       Task.find(filter).lean(),
       CalEvent.find({
         ...filter,
-        event_date: { $gte: monthStart, $lt: monthEnd }
+        $or: [
+          { event_date: { $gte: monthStart, $lt: monthEnd } },
+          { recurrence: { $in: ['Weekly', 'Monthly', 'Yearly'] }, event_date: { $lt: monthEnd } }
+        ]
       }).sort({ event_date: 1 }).lean()
     ]);
 
@@ -181,15 +184,48 @@ router.get('/', authenticateToken, async (req, res) => {
 
     const eventsByDay = {};
     for (const ev of events) {
-      const d = new Date(ev.event_date);
-      const dayKey = d.getDate();
-      if (!eventsByDay[dayKey]) eventsByDay[dayKey] = [];
-      eventsByDay[dayKey].push({
-        id: ev._id,
-        name: ev.name,
-        description: ev.description,
-        event_date: ev.event_date
-      });
+      const rec = ev.recurrence || 'None';
+      if (rec === 'None') {
+        if (ev.event_date >= monthStart && ev.event_date < monthEnd) {
+          const d = new Date(ev.event_date);
+          const dayKey = d.getDate();
+          if (!eventsByDay[dayKey]) eventsByDay[dayKey] = [];
+          eventsByDay[dayKey].push({
+            id: ev._id,
+            name: ev.name,
+            description: ev.description,
+            event_date: ev.event_date,
+            recurrence: rec
+          });
+        }
+      } else {
+        let cursor = new Date(ev.event_date);
+        let safety = 0;
+        while (cursor.getTime() < monthEnd && safety < 500) {
+          const ms = cursor.getTime();
+          if (ms >= monthStart && ms < monthEnd) {
+            const dayKey = cursor.getDate();
+            if (!eventsByDay[dayKey]) eventsByDay[dayKey] = [];
+            eventsByDay[dayKey].push({
+              id: ev._id,
+              name: ev.name,
+              description: ev.description,
+              event_date: ms,
+              recurrence: rec
+            });
+          }
+          if (rec === 'Weekly') {
+            cursor = new Date(cursor.getTime() + 7 * 86400 * 1000);
+          } else if (rec === 'Monthly') {
+            cursor.setMonth(cursor.getMonth() + 1);
+          } else if (rec === 'Yearly') {
+            cursor.setFullYear(cursor.getFullYear() + 1);
+          } else {
+            break;
+          }
+          safety++;
+        }
+      }
     }
 
     res.json({

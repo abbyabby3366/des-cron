@@ -1,11 +1,39 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import dns from 'dns';
+
+// Ensure SRV records for MongoDB Atlas resolve properly across local ISP/system DNS
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {
+  // Fall back to default resolver if custom servers cannot be set
+}
 
 // ---------------------------------------------------------------
 // HELPERS
 // ---------------------------------------------------------------
 export function sha256Hex(password) {
   return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+export function hashPasswordServer(clientHash) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(clientHash, salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+export function verifyPasswordServer(clientHash, storedHash) {
+  if (!clientHash || !storedHash) return false;
+  if (storedHash.startsWith('scrypt$')) {
+    const parts = storedHash.split('$');
+    if (parts.length !== 3) return false;
+    const [, salt, keyHex] = parts;
+    const derived = crypto.scryptSync(clientHash, salt, 64);
+    const keyBuf = Buffer.from(keyHex, 'hex');
+    if (derived.length !== keyBuf.length) return false;
+    return crypto.timingSafeEqual(derived, keyBuf);
+  }
+  return storedHash === clientHash;
 }
 
 export function generateToken() {
@@ -66,7 +94,7 @@ taskSchema.set('toJSON', { virtuals: true });
 taskSchema.set('toObject', { virtuals: true });
 
 const sendLogSchema = new mongoose.Schema({
-  task_id:       { type: mongoose.Schema.Types.ObjectId, ref: 'Task', required: true },
+  task_id:       { type: mongoose.Schema.Types.ObjectId, ref: 'Task', required: false, default: null },
   task_name:     { type: String, required: true },
   owner_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   target_jid:    { type: String, required: true },
@@ -84,6 +112,7 @@ const calEventSchema = new mongoose.Schema({
   name:          { type: String, required: true },
   description:   { type: String, default: '' },
   event_date:    { type: Number, required: true, index: true },
+  recurrence:    { type: String, enum: ['None', 'Weekly', 'Monthly', 'Yearly'], default: 'None' },
   reminders:     { type: [Number], default: [] },
   created_at:    { type: Number, required: true },
   updated_at:    { type: Number, required: true }
@@ -91,11 +120,24 @@ const calEventSchema = new mongoose.Schema({
 calEventSchema.set('toJSON', { virtuals: true });
 calEventSchema.set('toObject', { virtuals: true });
 
+const contactSchema = new mongoose.Schema({
+  owner_user_id: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  name:          { type: String, required: true },
+  phone:         { type: String, required: true },
+  group_name:    { type: String, default: '' },
+  notes:         { type: String, default: '' },
+  created_at:    { type: Number, required: true },
+  updated_at:    { type: Number, required: true }
+});
+contactSchema.set('toJSON', { virtuals: true });
+contactSchema.set('toObject', { virtuals: true });
+
 export const User     = mongoose.model('User', userSchema);
 export const Session  = mongoose.model('Session', sessionSchema);
 export const Task     = mongoose.model('Task', taskSchema);
 export const SendLog  = mongoose.model('SendLog', sendLogSchema);
 export const CalEvent = mongoose.model('CalEvent', calEventSchema);
+export const Contact  = mongoose.model('Contact', contactSchema);
 
 // ---------------------------------------------------------------
 // CONNECTION + SEED
@@ -125,8 +167,9 @@ export async function connectDb() {
   if (!adminUser) {
     await User.create({
       username: 'admin',
-      password_hash: sha256Hex('admin123'),
+      password_hash: hashPasswordServer(sha256Hex('admin123')),
       is_admin: true,
+      verification_code: generateVerificationCode(),
       created_at: Date.now(),
       created_by_id: '0'
     });

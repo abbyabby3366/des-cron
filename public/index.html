@@ -111,6 +111,7 @@
         
         <nav>
           <ul class="nav-list">
+            <li class="nav-section-header">Scheduling</li>
             <li>
               <a class="nav-link active" data-tab="dashboard">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
@@ -129,6 +130,24 @@
                 Calendar
               </a>
             </li>
+
+            <li><hr class="nav-section-divider"></li>
+            <li class="nav-section-header">Directory &amp; Activity</li>
+            <li>
+              <a class="nav-link" data-tab="contacts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+                Contacts
+              </a>
+            </li>
+            <li>
+              <a class="nav-link" data-tab="logs">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                Logs
+              </a>
+            </li>
+
+            <li><hr class="nav-section-divider"></li>
+            <li class="nav-section-header">System</li>
             <li>
               <a class="nav-link" data-tab="settings">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2 2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H20a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -139,12 +158,6 @@
               <a class="nav-link" data-tab="admin">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 Users
-              </a>
-            </li>
-            <li>
-              <a class="nav-link" data-tab="logs">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                Logs
               </a>
             </li>
           </ul>
@@ -165,16 +178,17 @@
         </div>
 
         <div class="user-profile">
-          <div class="user-avatar" id="userAvatar">A</div>
-          <div class="user-info">
-            <span class="profile-username" id="profileUsername">admin</span>
-            <span class="profile-role" id="profileRole">Admin</span>
+          <div class="user-profile-left">
+            <div class="user-avatar" id="userAvatar">A</div>
+            <div class="user-info">
+              <span class="profile-username" id="profileUsername">admin</span>
+              <span class="profile-role" id="profileRole">Admin</span>
+            </div>
           </div>
+          <button type="button" id="logoutBtn" class="logout-icon-btn" title="Sign out" aria-label="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
         </div>
-        <a class="nav-link" id="logoutBtn" style="padding-left: 0.5rem; color: #ef4444;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-          Sign out
-        </a>
       </div>
     </aside>
 
@@ -211,9 +225,11 @@
               <button class="filter-tab" data-value="past">Past</button>
             </div>
             <div class="select-wrapper">
-              <select id="taskTypeFilterDropdown" class="input select-input" style="margin: 0; min-width: 130px;">
+              <select id="taskTypeFilterDropdown" class="input select-input" style="margin: 0; min-width: 145px;">
                 <option value="all">All Tasks</option>
                 <option value="OneTime">One Time</option>
+                <option value="reminders">Event Reminders</option>
+                <option value="Interval">Interval</option>
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
@@ -258,11 +274,25 @@
         <div class="page-header">
           <div>
             <h1 class="page-title">Sent message logs</h1>
+            <p class="page-subtitle" id="logsSummaryText">No logs recorded yet</p>
           </div>
-          <button id="refreshLogsBtn" class="btn btn-secondary btn-sm">
-            Refresh
-          </button>
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <div class="search-wrapper" style="position: relative; flex-grow: 1; max-width: 320px;">
+              <input type="text" id="logSearchInput" class="input" placeholder="Search logs by task, number, message..." style="padding-left: 2.25rem; margin: 0;">
+              <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </div>
+            <div class="filter-tabs" id="logStatusFilterTabs">
+              <button class="filter-tab active" data-value="all">All</button>
+              <button class="filter-tab" data-value="sent">Sent</button>
+              <button class="filter-tab" data-value="failed">Failed</button>
+            </div>
+          </div>
         </div>
+
+        <div id="logsAlertContainer"></div>
 
         <div class="panel table-scroll">
           <table>
@@ -272,6 +302,7 @@
                 <th>Message</th>
                 <th>Status &amp; Time</th>
                 <th>API Log</th>
+                <th style="text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody id="logsTableBody">
@@ -479,6 +510,56 @@
       </div>
 
       <!-- ========================================== -->
+      <!-- TAB: CONTACTS & RECIPIENT GROUPS -->
+      <!-- ========================================== -->
+      <div id="contactsTab" class="page-container">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Saved Contacts</h1>
+            <p class="page-subtitle" id="contactCountText">0 saved contacts</p>
+          </div>
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <div class="search-wrapper">
+              <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="contactSearchInput" class="input input-sm" placeholder="Search name, phone, group..." style="padding-left: 2.25rem; width: 220px;">
+            </div>
+            <button id="createNewContactBtn" class="btn btn-primary" onclick="openContactDialog()">
+              Add contact
+            </button>
+          </div>
+        </div>
+
+        <div id="contactsAlertContainer"></div>
+
+        <div class="panel table-scroll" id="contactsTableContainer">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>WhatsApp JID / Number</th>
+                <th>Group</th>
+                <th>Notes</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="contactsTableBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="contactsEmptyState" style="display: none;">
+          <div class="empty-state">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
+            <h4 class="empty-title">No saved contacts yet</h4>
+            <p class="empty-desc">Save frequent recipients and organize them into broadcast groups for 1-click selection in tasks.</p>
+            <button class="btn btn-primary btn-sm" onclick="openContactDialog()">Add first contact</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
       <!-- TAB: SETTINGS -->
       <!-- ========================================== -->
       <div id="settingsTab" class="page-container">
@@ -491,9 +572,9 @@
 
         <div id="settingsAlertContainer"></div>
 
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem;">
           <!-- WhatsApp Default JID/Number panel -->
-          <div class="panel settings-panel" style="max-width: 480px; padding: 1.5rem;">
+          <div class="panel settings-panel" style="padding: 1.5rem;">
             <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
               <h3 class="panel-title" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted);"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
@@ -532,11 +613,43 @@
                 </div>
               </div>
             </form>
-            <p class="form-hint" style="margin-top: 0.5rem;">This number will be pre-filled when creating new tasks.</p>
+            <p class="form-hint" style="margin-top: 0.5rem;">This number will be pre-filled when creating new tasks, and updating it syncs your existing personal tasks.</p>
+
+            <!-- Webhook Verification Code Box -->
+            <div id="waVerifSection" style="margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;">
+                <div>
+                  <div style="font-size: 0.8rem; font-weight: 600; color: var(--text);">WhatsApp Webhook Verification Code</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);">Send this 8-char code to the bot on WhatsApp to auto-bind your number.</div>
+                </div>
+                <button type="button" id="generateVerifCodeBtn" class="btn btn-secondary btn-sm">Generate Code</button>
+              </div>
+              <div id="waVerifCodeDisplay" style="display: none; margin-top: 0.6rem; padding: 0.5rem 0.75rem; background: var(--bg-main); border: 1px dashed var(--accent); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 600; color: var(--accent); letter-spacing: 0.1em; text-align: center;">
+                <span id="settingsVerifCode">--------</span>
+              </div>
+            </div>
           </div>
 
           <!-- Change password panel -->
-
+          <div class="panel settings-panel" style="padding: 1.5rem;">
+            <div class="panel-header" style="margin-bottom: 1.25rem;">
+              <h3 class="panel-title" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-muted);"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                Change password
+              </h3>
+            </div>
+            <form id="changePasswordForm">
+              <div class="form-group">
+                <label class="form-label" for="currentPasswordInput">Current password</label>
+                <input type="password" id="currentPasswordInput" class="input" placeholder="••••••••" required autocomplete="current-password">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="newPasswordInput">New password (min 6 characters)</label>
+                <input type="password" id="newPasswordInput" class="input" placeholder="••••••••" required minlength="6" autocomplete="new-password">
+              </div>
+              <button type="submit" id="changePasswordBtn" class="btn btn-primary btn-sm" style="height: 38px; padding: 0 1rem;">Update password</button>
+            </form>
+          </div>
         </div>
 
         <div class="panel" style="max-width: 800px; padding: 2rem; margin-top: 1.5rem;">
@@ -571,11 +684,12 @@ NEVER guess or substitute default values for missing user parameters. If a user'
 
 #### 2. Calendar Events (POST /api/events):
 - Event Title & Date/Time: Name and start time of the event.
+- Recurrence: None, Weekly, Monthly, or Yearly?
 - Description: Ask if they want to add event details or notes.
 - Automated Reminders: Ask if they want WhatsApp alerts before the event (Options: 48h, 24h, 2h, 1h before, or at start time).
 
 #### 3. Ambiguous Intent (Task vs Event):
-If you cannot tell whether the user wants a notification task or a calendar event, ask:
+If you cannot tell whether the user wants a scheduled notification task or a calendar event, ask:
 "Would you like a scheduled notification (sends a WhatsApp message), or a calendar event (with optional reminder alerts beforehand)?"
 
 ---
@@ -589,6 +703,7 @@ If you cannot tell whether the user wants a notification task or a calendar even
 - Delete Task: DELETE /api/tasks/:id
 - Pause Task: POST /api/tasks/:id/pause
 - Resume Task: POST /api/tasks/:id/resume
+- Run Now / Test Send: POST /api/tasks/:id/run-now
 
 ### Events API Endpoints:
 - List Events: GET /api/events
@@ -596,9 +711,10 @@ If you cannot tell whether the user wants a notification task or a calendar even
 - Update Event: PUT /api/events/:id
 - Delete Event: DELETE /api/events/:id
 
-### Other:
+### Contacts & Logs:
+- Saved Contacts: GET /api/contacts | POST /api/contacts
 - Dashboard Stats: GET /api/tasks/stats
-- Send Logs: GET /api/logs
+- Send Logs: GET /api/logs | Retry Failed Log: POST /api/logs/:id/retry
 
 ---
 
@@ -622,11 +738,6 @@ Use this to schedule custom messages directly.
   - `messageTemplate`: "[Personal message text]"
   - `messageTemplate2`: "[Broadcast message - falls back to messageTemplate if empty]"
 
-### Task Lifecycle:
-- OneTime tasks move to "Completed" or "Failed" after firing.
-- Interval and Cron tasks stay "Active" and keep recurring even if individual sends fail.
-- Tasks can be paused (POST /:id/pause) and resumed (POST /:id/resume).
-
 ---
 
 ## SECTION 2: CALENDAR EVENTS & AUTOMATED REMINDERS API
@@ -640,18 +751,9 @@ Create an Event. The system will automatically create OneTime WhatsApp reminder 
 - Request Body JSON:
   - `name`: "[Event Name]" (required)
   - `eventDate`: "[ISO String]" (required, e.g. "2026-07-29T19:00:00+08:00")
+  - `recurrence`: "None" | "Weekly" | "Monthly" | "Yearly"
   - `description`: "[Event details/notes]" (optional)
-  - `reminders`: `[Number]` (array of offsets in seconds before event)
-    - `172800`: 48 hours before
-    - `86400`: 24 hours before
-    - `7200`: 2 hours before
-    - `3600`: 1 hour before
-    - `0`: At event start time
-
-### How Reminders Work:
-When an event is created with reminders, the system auto-creates OneTime tasks that send:
-"⏰ Event Reminder: [Event Name] is scheduled for [Date/Time]. Description: [Description]"
-If reminders are later modified via PUT, the system syncs (adds/removes) the tasks automatically.
+  - `reminders`: `[Number]` (array of offsets in seconds before event: 172800, 86400, 7200, 3600, 0)
             </textarea>
             <button id="copyPromptBtn" class="btn btn-secondary btn-sm" style="position: absolute; right: 12px; top: 12px; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; background-color: var(--bg-panel); border-color: var(--border); border-radius: 6px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
@@ -716,6 +818,7 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
     
     <form id="taskForm">
       <div class="form-body-scroll">
+        <div id="taskDialogAlertContainer"></div>
         <input type="hidden" id="taskIdField">
         
         <div class="form-group">
@@ -726,6 +829,7 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
         <div class="form-group">
           <label class="form-label" for="taskTargetWaChatId">Recipient WhatsApp JID / Number</label>
           <input type="text" id="taskTargetWaChatId" class="input" placeholder="e.g., 60122273341" required>
+          <div id="taskPrimaryContactPicker" class="contact-picker-bar" style="display: none;"></div>
           <p class="form-hint">The main phone number or JID to send this message to.</p>
         </div>
 
@@ -741,7 +845,7 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
         <!-- One-time configuration -->
         <div class="form-group schedule-field" id="oneTimeFields">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
-            <label class="form-label" for="runAt" style="margin-bottom: 0;">Run at</label>
+            <label class="form-label" for="runAt" style="margin-bottom: 0;">Run at (GMT+8)</label>
             <label style="display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; cursor: pointer; user-select: none;">
               <input type="checkbox" id="sendImmediately" style="width: 14px; height: 14px; accent-color: var(--accent);">
               Send immediately
@@ -754,6 +858,13 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
         <div class="form-group schedule-field" id="intervalFields" style="display: none;">
           <label class="form-label" for="intervalSecs">Interval (seconds)</label>
           <input type="number" id="intervalSecs" class="input" placeholder="3600" min="60">
+          <div class="cron-presets">
+            <button type="button" class="cron-chip" onclick="setIntervalPreset(300)">Every 5 mins</button>
+            <button type="button" class="cron-chip" onclick="setIntervalPreset(1800)">Every 30 mins</button>
+            <button type="button" class="cron-chip" onclick="setIntervalPreset(3600)">Every 1 hour</button>
+            <button type="button" class="cron-chip" onclick="setIntervalPreset(21600)">Every 6 hours</button>
+            <button type="button" class="cron-chip" onclick="setIntervalPreset(86400)">Every 24 hours</button>
+          </div>
           <p class="form-hint">Minimum 60 seconds.</p>
         </div>
 
@@ -761,35 +872,58 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
         <div class="form-group schedule-field" id="cronFields" style="display: none;">
           <label class="form-label" for="cronExpr">Cron expression</label>
           <input type="text" id="cronExpr" class="input input-mono" placeholder="0 9 * * *">
-          <p class="form-hint">Format: minute hour day month weekday — e.g. "0 9 * * *" is daily at 9:00 AM.</p>
+          <div class="cron-presets">
+            <button type="button" class="cron-chip" onclick="setCronPreset('0 9 * * *')">Daily 9:00 AM</button>
+            <button type="button" class="cron-chip" onclick="setCronPreset('0 18 * * *')">Daily 6:00 PM</button>
+            <button type="button" class="cron-chip" onclick="setCronPreset('0 9 * * 1-5')">Weekdays 9:00 AM</button>
+            <button type="button" class="cron-chip" onclick="setCronPreset('0 9 * * 1')">Weekly Mon 9:00 AM</button>
+            <button type="button" class="cron-chip" onclick="setCronPreset('0 9 1 * *')">1st of Month 9:00 AM</button>
+          </div>
+          <p class="form-hint">Format: minute hour day month weekday — e.g. "0 9 * * *" is daily at 9:00 AM (GMT+8).</p>
         </div>
 
+        <!-- Live Next 3 Runs Preview -->
+        <div id="schedulePreviewBox" class="schedule-preview-box" style="display: none; margin-bottom: 1rem;"></div>
+
         <div class="form-group">
-          <label class="form-label" for="messageTemplate">Personal message</label>
-          <textarea id="messageTemplate" class="input" rows="3" placeholder="Hello! Here is your scheduled personal message..." required></textarea>
-          <p class="form-hint">Sent to the owner's bound WhatsApp number.</p>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+            <label class="form-label" for="messageTemplate" style="margin-bottom: 0;">Personal message</label>
+            <button type="button" id="previewMessageBtn" class="btn btn-secondary btn-sm" style="height: 26px; padding: 0 0.6rem; font-size: 0.72rem;" onclick="previewTaskMessage()">
+              Preview live variables
+            </button>
+          </div>
+          <textarea id="messageTemplate" class="input" rows="3" placeholder="Hello! Today is {{date}} ({{day}}). USD rate: {{bnm:USD}}" required></textarea>
+          <div id="messagePreviewBox" class="message-preview-box" style="display: none;"></div>
+          <p class="form-hint">Sent to the primary recipient WhatsApp number.</p>
           <details style="margin-top: 0.5rem; font-size: 0.8rem; border: 1px dashed var(--border); border-radius: 6px; padding: 0.5rem;">
-            <summary style="cursor: pointer; color: var(--accent); font-weight: 500; outline: none; user-select: none;">💡 Dynamic BNM Placeholders Guide</summary>
-            <div style="margin-top: 0.4rem; line-height: 1.4; color: var(--text-muted);">
-              Include these placeholders to pull live financial data from Bank Negara Malaysia:
-              <ul style="margin: 0.3rem 0; padding-left: 1.2rem; list-style-type: disc;">
-                <li><code>{{bnm:USD}}</code> - USD Exchange Rate (1200 session)</li>
-                <li><code>{{bnm:SGD}}</code> - SGD Exchange Rate (1200 session)</li>
-                <li><code>{{bnm:rates:EUR}}</code> - EUR Exchange Rate (1200 session)</li>
-                <li><code>{{bnm:gold}}</code> - Kijang Emas Gold Prices</li>
-                <li><code>{{bnm:opr}}</code> - Overnight Policy Rate (OPR)</li>
+            <summary style="cursor: pointer; color: var(--accent); font-weight: 500; outline: none; user-select: none;">💡 Dynamic Placeholders &amp; BNM Guide</summary>
+            <div style="margin-top: 0.4rem; line-height: 1.45; color: var(--text-muted);">
+              <strong>Date, Time &amp; Countdown (GMT+8):</strong>
+              <ul style="margin: 0.25rem 0 0.5rem 0; padding-left: 1.2rem; list-style-type: disc;">
+                <li><code>{{date}}</code> — Current date in <code>DD-MM-YY</code></li>
+                <li><code>{{time}}</code> — Current time in <code>HH:mm</code></li>
+                <li><code>{{datetime}}</code> — Full <code>DD-MM-YY HH:mm GMT+8</code></li>
+                <li><code>{{day}}</code> — Day of week (e.g. Monday)</li>
+                <li><code>{{countdown:31-12-26}}</code> — Days remaining until target <code>DD-MM-YY</code></li>
+              </ul>
+              <strong>Bank Negara Malaysia Live Rates:</strong>
+              <ul style="margin: 0.25rem 0 0 0; padding-left: 1.2rem; list-style-type: disc;">
+                <li><code>{{bnm:USD}}</code> / <code>{{bnm:SGD}}</code> / <code>{{bnm:rates:EUR}}</code> — Exchange Rates</li>
+                <li><code>{{bnm:gold}}</code> — Kijang Emas Gold Prices</li>
+                <li><code>{{bnm:opr}}</code> — Overnight Policy Rate (OPR)</li>
               </ul>
             </div>
           </details>
         </div>
 
-        <details class="accordion">
+        <details class="accordion" id="taskBroadcastAccordion">
           <summary>Send to multiple recipients (Optional)</summary>
           <div class="accordion-content">
             <div class="form-group" style="margin-bottom: 0;">
               <label class="form-label" for="targetList">Additional Recipients (comma-separated JIDs/numbers)</label>
               <input type="text" id="targetList" class="input" placeholder="e.g., 60122273342, 60122273343">
-              <p class="form-hint">List WhatsApp numbers or Group JIDs separated by commas.</p>
+              <div id="taskBroadcastContactPicker" class="contact-picker-bar" style="display: none;"></div>
+              <p class="form-hint">List WhatsApp numbers or click a saved contact/group chip above to append.</p>
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
@@ -801,9 +935,16 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
         </details>
       </div>
 
-      <div class="dialog-buttons">
-        <button type="button" class="btn btn-secondary" onclick="document.getElementById('taskDialog').close()">Cancel</button>
-        <button type="submit" id="taskFormSubmitBtn" class="btn btn-primary">Save task</button>
+      <div class="dialog-buttons" style="justify-content: space-between;">
+        <div>
+          <button type="button" id="taskDialogRunNowBtn" class="btn btn-secondary" style="display: none;" onclick="runTaskFromDialog()">
+            ⚡ Test Send Now
+          </button>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('taskDialog').close()">Cancel</button>
+          <button type="submit" id="taskFormSubmitBtn" class="btn btn-primary">Save task</button>
+        </div>
       </div>
     </form>
   </dialog>
@@ -819,6 +960,7 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
     
     <form id="eventForm">
       <div class="form-body-scroll">
+        <div id="eventDialogAlertContainer"></div>
         <input type="hidden" id="eventIdField">
         
         <div class="form-group">
@@ -826,9 +968,21 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
           <input type="text" id="eventName" class="input" placeholder="Weekly Sync Meeting" required>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="eventDate">Date and Time</label>
-          <input type="datetime-local" id="eventDate" class="input" required>
+        <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 0.75rem;">
+          <div class="form-group">
+            <label class="form-label" for="eventDate">Date and Time (GMT+8)</label>
+            <input type="datetime-local" id="eventDate" class="input" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="eventRecurrence">Repeat / Recurrence</label>
+            <select id="eventRecurrence" class="input">
+              <option value="None">Does not repeat</option>
+              <option value="Weekly">Weekly</option>
+              <option value="Monthly">Monthly</option>
+              <option value="Yearly">Yearly (Anniversary/Birthday)</option>
+            </select>
+          </div>
         </div>
 
         <div class="form-group">
@@ -888,6 +1042,49 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
   </dialog>
 
   <!-- ========================================== -->
+  <!-- MODAL: CONTACT CREATION/EDIT -->
+  <!-- ========================================== -->
+  <dialog id="contactDialog" closedby="any" aria-labelledby="contactDialogTitle">
+    <div class="dialog-header">
+      <h2 id="contactDialogTitle" class="dialog-title">Add Contact</h2>
+      <button class="dialog-close-btn" onclick="document.getElementById('contactDialog').close()">&times;</button>
+    </div>
+
+    <form id="contactForm">
+      <div class="form-body-scroll">
+        <div id="contactDialogAlertContainer"></div>
+        <input type="hidden" id="contactIdField">
+
+        <div class="form-group">
+          <label class="form-label" for="contactName">Contact Name</label>
+          <input type="text" id="contactName" class="input" placeholder="e.g., Marketing Lead - Sarah" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="contactPhone">WhatsApp Number / JID</label>
+          <input type="text" id="contactPhone" class="input input-mono" placeholder="e.g., 60122273341" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="contactGroup">Group Tag (Optional)</label>
+          <input type="text" id="contactGroup" class="input" placeholder="e.g., Family, Operations, VIP">
+          <p class="form-hint">Contacts sharing the same group tag can be added to a task's broadcast list in a single click.</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="contactNotes">Notes (Optional)</label>
+          <input type="text" id="contactNotes" class="input" placeholder="Optional notes or role">
+        </div>
+      </div>
+
+      <div class="dialog-buttons">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('contactDialog').close()">Cancel</button>
+        <button type="submit" id="contactFormSubmitBtn" class="btn btn-primary">Save contact</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ========================================== -->
   <!-- MODAL: CREATE USER -->
   <!-- ========================================== -->
   <dialog id="userDialog" closedby="any" aria-labelledby="userDialogTitle">
@@ -924,8 +1121,6 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
     </form>
   </dialog>
 
-
-
   <!-- ========================================== -->
   <!-- MODAL: EDIT USER (Admin overrides) -->
   <!-- ========================================== -->
@@ -956,16 +1151,31 @@ If reminders are later modified via PUT, the system syncs (adds/removes) the tas
       <div class="form-group">
         <label class="form-label" for="editUserChatId">Bound WhatsApp ID / Number (JID)</label>
         <input type="text" id="editUserChatId" class="input" placeholder="60122273341">
-        <p class="form-hint">E.g., 60122273341. Binding manually clears pending verification.</p>
+        <p class="form-hint">E.g., 60122273341. Binding manually clears pending verification and updates the user's tasks.</p>
       </div>
-
-
 
       <div class="dialog-buttons">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('editUserDialog').close()">Cancel</button>
         <button type="submit" class="btn btn-primary">Save changes</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- ========================================== -->
+  <!-- MODAL: REUSABLE CONFIRMATION DIALOG -->
+  <!-- ========================================== -->
+  <dialog id="confirmDialog" closedby="any" aria-labelledby="confirmDialogTitle" style="max-width: 420px;">
+    <div class="dialog-header">
+      <h2 id="confirmDialogTitle" class="dialog-title">Confirm Action</h2>
+      <button class="dialog-close-btn" onclick="closeConfirmDialog()">&times;</button>
+    </div>
+    <div style="padding: 1.25rem 1.5rem;">
+      <p id="confirmDialogMessage" style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.5; margin: 0;">Are you sure you want to proceed?</p>
+    </div>
+    <div class="dialog-buttons">
+      <button type="button" class="btn btn-secondary" onclick="closeConfirmDialog()">Cancel</button>
+      <button type="button" id="confirmDialogConfirmBtn" class="btn btn-danger">Confirm</button>
+    </div>
   </dialog>
 
   <!-- html2canvas for PageAgent Bridge screenshots -->

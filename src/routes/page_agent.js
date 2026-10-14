@@ -6,13 +6,27 @@ const router = express.Router();
 
 const pageAgentTasks = new Map();
 let pageAgentTaskCounter = 0;
+const TASK_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 const screenshotsDir = path.resolve(process.cwd(), 'public', 'screenshots');
 if (!fs.existsSync(screenshotsDir)) {
   fs.mkdirSync(screenshotsDir, { recursive: true });
 }
 
+function pruneOldPageAgentTasks() {
+  const cutoff = Date.now() - TASK_TTL_MS;
+  for (const [id, t] of pageAgentTasks.entries()) {
+    if (t.createdAt < cutoff) {
+      if (t.screenshotPath && fs.existsSync(t.screenshotPath)) {
+        try { fs.unlinkSync(t.screenshotPath); } catch (_) {}
+      }
+      pageAgentTasks.delete(id);
+    }
+  }
+}
+
 router.post('/execute', (req, res) => {
+  pruneOldPageAgentTasks();
   const { task, includeScreenshot } = req.body;
   if (!task) return res.status(400).json({ error: 'task is required' });
 

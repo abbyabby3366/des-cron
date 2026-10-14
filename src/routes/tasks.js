@@ -1,7 +1,8 @@
 import express from 'express';
 import { Task, User, SendLog } from '../database.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { calculateNextRun } from '../scheduler.js';
+import { calculateNextRun, calculateNextNRuns, executeTaskSends } from '../scheduler.js';
+import { resolvePlaceholders, getGMT8Parts } from '../helpers/bnm_helper.js';
 
 const router = express.Router();
 
@@ -54,6 +55,46 @@ router.get('/stats', authenticateToken, async (req, res) => {
   }
 });
 
+// Preview next N scheduled runs
+router.post('/preview-schedule', authenticateToken, (req, res) => {
+  const { taskType, scheduleSpec } = req.body;
+  if (!taskType || !scheduleSpec) {
+    return res.status(400).json({ error: 'taskType and scheduleSpec are required' });
+  }
+
+  try {
+    const runs = calculateNextNRuns(taskType, scheduleSpec, 3, Date.now());
+    const formatted = runs.map(ms => {
+      const p = getGMT8Parts(ms);
+      return {
+        timestamp: ms,
+        dateStr: p.dateStr,
+        timeStr: p.timeStr,
+        weekday: p.weekday,
+        dateTimeStr: `${p.dateStr} ${p.timeStr} (${p.weekday.slice(0, 3)})`
+      };
+    });
+    res.json({ runs: formatted });
+  } catch (err) {
+    res.status(400).json({ error: `Invalid schedule: ${err.message}` });
+  }
+});
+
+// Preview resolved message template (including live BNM & date/countdown placeholders)
+router.post('/preview-message', authenticateToken, async (req, res) => {
+  const { messageTemplate } = req.body;
+  if (!messageTemplate) {
+    return res.status(400).json({ error: 'messageTemplate is required' });
+  }
+
+  try {
+    const resolved = await resolvePlaceholders(messageTemplate);
+    res.json({ resolved });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to resolve template: ${err.message}` });
+  }
+});
+
 router.get('/', authenticateToken, async (req, res) => {
   try {
     let tasks;
@@ -97,17 +138,20 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const now = Date.now();
     const nextRun = calculateNextRun(taskType, scheduleSpec, now);
+    if (!nextRun || isNaN(nextRun)) {
+      return res.status(400).json({ error: 'Invalid schedule specification or cron expression' });
+    }
 
     const task = await Task.create({
       owner_user_id: req.user._id,
       name,
       task_type: taskType,
       target_wa_chat_id: targetWaChatId,
-      target_list: targetList || [],
+      target_list: Array.isArray(targetList) ? targetList : [],
       status: 'Active',
       schedule_spec: scheduleSpec,
       message_template: messageTemplate,
-      message_template_2: messageTemplate2 || '',
+      message_template_2: messageTemplate2 ? messageTemplate2 : '',
       next_run_at: nextRun,
       created_at: now,
       updated_at: now
@@ -122,7 +166,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
 router.put('/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { name, targetWaChatId, targetList, scheduleSpec, messageTemplate, messageTemplate2 } = req.body;
+  const { name, taskType, targetWaChatId, targetList, scheduleSpec, messageTemplate, messageTemplate2 } = req.body;
 
   try {
     const task = await Task.findById(id);
@@ -134,14 +178,24 @@ router.put('/:id', authenticateToken, async (req, res) => {
     const now = Date.now();
 
     if (name) task.name = name;
+    if (taskType && ['OneTime', 'Interval', 'Cron'].includes(taskType)) {
+      task.task_type = taskType;
+    }
     if (targetWaChatId) task.target_wa_chat_id = targetWaChatId;
     if (targetList) task.target_list = targetList;
     if (messageTemplate) task.message_template = messageTemplate;
     if (messageTemplate2 !== undefined) task.message_template_2 = messageTemplate2;
 
     if (scheduleSpec) {
+      const nextRun = calculateNextRun(task.task_type, scheduleSpec, now);
+      if (!nextRun || isNaN(nextRun)) {
+        return res.status(400).json({ error: 'Invalid schedule specification or cron expression' });
+      }
       task.schedule_spec = scheduleSpec;
-      task.next_run_at = calculateNextRun(task.task_type, scheduleSpec, now);
+      task.next_run_at = nextRun;
+      if (task.status === 'Completed' || task.status === 'Failed') {
+        task.status = 'Active';
+      }
     }
 
     task.updated_at = now;
@@ -210,6 +264,39 @@ router.post('/:id/resume', authenticateToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('Resume task error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+router.post('/:id/run-now', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const task = await Task.findById(id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (task.owner_user_id.toString() !== req.user._id.toString() && !req.user.is_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+
+    const now = Date.now();
+    const { allSucceeded, sentCount, failedCount, lastError } = await executeTaskSends(task, now);
+
+    task.last_run_at = now;
+    task.updated_at = now;
+    await task.save();
+
+    if (!allSucceeded) {
+      return res.status(502).json({
+        success: false,
+        sentCount,
+        failedCount,
+        error: lastError || 'One or more messages failed to send'
+      });
+    }
+
+    res.json({ success: true, sentCount, failedCount });
+  } catch (err) {
+    console.error('Run-now task error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

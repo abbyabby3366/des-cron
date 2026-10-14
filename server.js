@@ -9,6 +9,7 @@ import { startScheduler } from './src/scheduler.js';
 import authRouter from './src/routes/auth.js';
 import tasksRouter from './src/routes/tasks.js';
 import eventsRouter from './src/routes/events.js';
+import contactsRouter from './src/routes/contacts.js';
 import logsRouter from './src/routes/logs.js';
 import calendarRouter from './src/routes/calendar.js';
 import adminRouter from './src/routes/admin.js';
@@ -39,6 +40,7 @@ app.get('/api/health', async (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/events', eventsRouter);
+app.use('/api/contacts', contactsRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/admin', adminRouter);

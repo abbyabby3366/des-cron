@@ -10,8 +10,11 @@ let cachedUsers = [];
 let cachedTasks = [];
 let cachedLogs = [];
 let cachedEvents = [];
+let cachedContacts = [];
 let loaderTimeout = null;
 let autoRefreshInterval = null;
+let schedulePreviewTimer = null;
+let confirmDialogCallback = null;
 let calCurrentYear = new Date().getFullYear();
 let calCurrentMonth = new Date().getMonth() + 1;
 let calendarData = null;
@@ -19,8 +22,144 @@ let calSelectTodayOnRender = false;
 let currentTaskFilter = 'all';
 let currentTaskStatusFilter = 'upcoming';
 let currentEventFilter = 'upcoming';
+let currentLogFilter = 'all';
 let taskSearchQuery = '';
 let eventSearchQuery = '';
+let logSearchQuery = '';
+let contactSearchQuery = '';
+
+// ---------------------------------------------------------------
+// GMT+8 (Asia/Kuala_Lumpur) & DD-MM-YY DATE/TIME STANDARDS
+// ---------------------------------------------------------------
+function getGMT8Parts(timestamp) {
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) {
+    map[p.type] = p.value;
+  }
+  const yyyy = map.year;
+  const yy = String(yyyy).slice(-2);
+  const mm = map.month;
+  const dd = map.day;
+  const hh = map.hour === '24' ? '00' : map.hour;
+  const min = map.minute;
+  const sec = map.second;
+  return {
+    dd,
+    mm,
+    yy,
+    yyyy,
+    hh,
+    min,
+    sec,
+    dateStr: `${dd}-${mm}-${yy}`,
+    timeStr: `${hh}:${min}`,
+    timeWithSecStr: `${hh}:${min}:${sec}`,
+    dateTimeStr: `${dd}-${mm}-${yy} ${hh}:${min}`
+  };
+}
+
+function formatDateGMT8(timestamp) {
+  if (!timestamp) return '—';
+  const p = getGMT8Parts(timestamp);
+  return p ? p.dateStr : '—';
+}
+
+function formatTimeGMT8(timestamp, includeSeconds = false) {
+  if (!timestamp) return '—';
+  const p = getGMT8Parts(timestamp);
+  if (!p) return '—';
+  return includeSeconds ? `${p.timeWithSecStr} GMT+8` : `${p.timeStr} GMT+8`;
+}
+
+function formatDateTimeGMT8(timestamp) {
+  if (!timestamp) return '—';
+  const p = getGMT8Parts(timestamp);
+  return p ? `${p.dateTimeStr} GMT+8` : '—';
+}
+
+/**
+ * Renders date and time on two separate stacked rows inside table cells (<td>),
+ * with the secondary component smaller and muted.
+ */
+function renderStackedDateTime(timestamp, primaryIsDate = true, labelPrefix = '') {
+  if (!timestamp) {
+    return `<div class="td-datetime-stack"><span class="td-dt-secondary">${labelPrefix ? `${escapeHtml(labelPrefix)}: —` : '—'}</span></div>`;
+  }
+  const p = getGMT8Parts(timestamp);
+  if (!p) {
+    return `<div class="td-datetime-stack"><span class="td-dt-secondary">—</span></div>`;
+  }
+  const prefixHtml = labelPrefix ? `<span style="opacity:0.75;font-weight:500;">${escapeHtml(labelPrefix)}:</span> ` : '';
+  if (primaryIsDate) {
+    return `
+      <div class="td-datetime-stack">
+        <span class="td-dt-primary">${prefixHtml}${p.dateStr}</span>
+        <span class="td-dt-secondary">${p.timeStr} GMT+8</span>
+      </div>
+    `;
+  }
+  return `
+    <div class="td-datetime-stack">
+      <span class="td-dt-primary">${prefixHtml}${p.timeStr} GMT+8</span>
+      <span class="td-dt-secondary">${p.dateStr}</span>
+    </div>
+  `;
+}
+
+/**
+ * Converts an epoch/ISO timestamp into YYYY-MM-DDTHH:mm in GMT+8 for <input type="datetime-local">
+ */
+function toLocalDatetimeInputGMT8(timestamp) {
+  const p = getGMT8Parts(timestamp);
+  if (!p) return '';
+  return `${p.yyyy}-${p.mm}-${p.dd}T${p.hh}:${p.min}`;
+}
+
+/**
+ * Parses a <input type="datetime-local"> value explicitly as GMT+8 (+08:00) into an ISO string
+ */
+function parseLocalDatetimeInputGMT8(val) {
+  if (!val) return null;
+  const normalized = val.length === 16 ? `${val}:00+08:00` : `${val}+08:00`;
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? new Date(val).toISOString() : d.toISOString();
+}
+
+// ---------------------------------------------------------------
+// REUSABLE CONFIRMATION DIALOG (Deletions & Sign Out)
+// ---------------------------------------------------------------
+function openConfirmDialog({ title, message, confirmText = 'Confirm', danger = true, onConfirm }) {
+  const dialog = document.getElementById('confirmDialog');
+  const titleEl = document.getElementById('confirmDialogTitle');
+  const msgEl = document.getElementById('confirmDialogMessage');
+  const confirmBtn = document.getElementById('confirmDialogConfirmBtn');
+  if (!dialog || !titleEl || !msgEl || !confirmBtn) return;
+
+  titleEl.textContent = title;
+  msgEl.textContent = message;
+  confirmBtn.textContent = confirmText;
+  confirmBtn.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+  confirmDialogCallback = onConfirm;
+  dialog.showModal();
+}
+
+window.closeConfirmDialog = function() {
+  const dialog = document.getElementById('confirmDialog');
+  if (dialog && dialog.open) dialog.close();
+  confirmDialogCallback = null;
+};
 
 // SHA-256 via Web Crypto API
 async function sha256Hex(message) {
@@ -525,6 +664,9 @@ function preloadAllTabsData() {
   if (hash !== 'events') {
     refreshEvents(true);
   }
+  if (hash !== 'contacts') {
+    refreshContacts(true);
+  }
 }
 
 function updateProfileUI() {
@@ -567,6 +709,8 @@ function switchTab(tabId) {
     refreshEvents();
   } else if (tabId === 'calendar') {
     refreshCalendar();
+  } else if (tabId === 'contacts') {
+    refreshContacts();
   } else if (tabId === 'settings') {
     loadSettings();
   } else if (tabId === 'admin') {
@@ -602,7 +746,19 @@ function setupNavigation() {
     }
   });
   
-  document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('logoutBtn').addEventListener('click', promptLogout);
+}
+
+function promptLogout() {
+  openConfirmDialog({
+    title: 'Sign out of CronWA',
+    message: `Are you sure you want to sign out from "${currentUser ? currentUser.username : 'your account'}"?`,
+    confirmText: 'Sign out',
+    danger: true,
+    onConfirm: async () => {
+      await logout();
+    }
+  });
 }
 
 async function logout() {
@@ -634,6 +790,12 @@ function startAutoRefresh() {
       refreshStats();
     } else if (tab === 'events') {
       refreshEvents(true);
+    } else if (tab === 'logs') {
+      refreshLogs(true);
+    } else if (tab === 'calendar') {
+      refreshCalendar(true);
+    } else if (tab === 'contacts') {
+      refreshContacts(true);
     }
   }, 10000);
 }
@@ -649,6 +811,18 @@ function stopAutoRefresh() {
 // EVENT LISTENERS
 // ---------------------------------------------------------------
 function setupEventListeners() {
+  // Confirmation Dialog button
+  const confirmBtn = document.getElementById('confirmDialogConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+      const cb = confirmDialogCallback;
+      closeConfirmDialog();
+      if (typeof cb === 'function') {
+        await cb();
+      }
+    });
+  }
+
   // Login form
   document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -691,12 +865,13 @@ function setupEventListeners() {
     }
   });
 
-  // Task type selector
+  // Task type selector & live schedule preview triggers
   document.getElementById('taskType').addEventListener('change', (e) => {
     document.querySelectorAll('.schedule-field').forEach(f => f.style.display = 'none');
     const map = { OneTime: 'oneTimeFields', Interval: 'intervalFields', Cron: 'cronFields' };
     const el = document.getElementById(map[e.target.value]);
     if (el) el.style.display = 'block';
+    schedulePreviewUpdate();
   });
 
   // Send immediately selector
@@ -707,6 +882,14 @@ function setupEventListeners() {
       runAtInput.value = '';
     } else {
       runAtInput.disabled = false;
+    }
+    schedulePreviewUpdate();
+  });
+
+  ['runAt', 'intervalSecs', 'cronExpr'].forEach(fieldId => {
+    const el = document.getElementById(fieldId);
+    if (el) {
+      el.addEventListener('input', () => schedulePreviewUpdate());
     }
   });
 
@@ -721,7 +904,7 @@ function setupEventListeners() {
 
   // Event filter tabs change listener
   document.querySelectorAll('#eventTypeFilterTabs .filter-tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
+    tab.addEventListener('click', () => {
       document.querySelectorAll('#eventTypeFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentEventFilter = tab.getAttribute('data-value');
@@ -740,7 +923,7 @@ function setupEventListeners() {
 
   // Task status filter tabs change listener
   document.querySelectorAll('#taskStatusFilterTabs .filter-tab').forEach(tab => {
-    tab.addEventListener('click', (e) => {
+    tab.addEventListener('click', () => {
       document.querySelectorAll('#taskStatusFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
       currentTaskStatusFilter = tab.getAttribute('data-value');
@@ -755,6 +938,38 @@ function setupEventListeners() {
       eventSearchQuery = e.target.value.toLowerCase().trim();
       applyEventFilterAndRender();
     });
+  }
+
+  // Log search query & status filter tabs listeners
+  const logSearchInput = document.getElementById('logSearchInput');
+  if (logSearchInput) {
+    logSearchInput.addEventListener('input', (e) => {
+      logSearchQuery = e.target.value.toLowerCase().trim();
+      applyLogFilterAndRender();
+    });
+  }
+
+  document.querySelectorAll('#logStatusFilterTabs .filter-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('#logStatusFilterTabs .filter-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentLogFilter = tab.getAttribute('data-value');
+      applyLogFilterAndRender();
+    });
+  });
+
+  // Contact search & form listeners
+  const contactSearchInput = document.getElementById('contactSearchInput');
+  if (contactSearchInput) {
+    contactSearchInput.addEventListener('input', (e) => {
+      contactSearchQuery = e.target.value.toLowerCase().trim();
+      applyContactFilterAndRender();
+    });
+  }
+
+  const contactForm = document.getElementById('contactForm');
+  if (contactForm) {
+    contactForm.addEventListener('submit', handleContactFormSubmit);
   }
 
   // Event form
@@ -783,7 +998,6 @@ function setupEventListeners() {
   // Task form
   document.getElementById('taskForm').addEventListener('submit', handleTaskFormSubmit);
   document.getElementById('createNewTaskBtn').addEventListener('click', () => openTaskDialog());
-
 
   // Manual WhatsApp binding
   const manualWaInput = document.getElementById('manualWaNumber');
@@ -825,24 +1039,95 @@ function setupEventListeners() {
       });
       const data = await res.json();
       if (res.ok) {
-        showAlert(alert, 'success', 'WhatsApp number updated!');
+        showAlert(alert, 'success', 'WhatsApp number updated and synced to your tasks!');
         currentUser.chatId = number;
         currentUser.verificationCode = null;
         localStorage.setItem('cronwa_user', JSON.stringify(currentUser));
         loadSettings();
         refreshTasks();
       } else {
-        showAlert(alert, 'danger', data.error || 'Failed');
+        showAlert(alert, 'danger', data.error || 'Failed to update WhatsApp number');
       }
     } catch (err) {
-      showAlert(alert, 'danger', 'Network error');
+      showAlert(alert, 'danger', 'Network error while updating WhatsApp number.');
     }
   });
 
+  // Generate WhatsApp Verification Code button
+  const genVerifBtn = document.getElementById('generateVerifCodeBtn');
+  if (genVerifBtn) {
+    genVerifBtn.addEventListener('click', async () => {
+      const alert = document.getElementById('settingsAlertContainer');
+      alert.innerHTML = '';
+      genVerifBtn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/verification-code', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiToken}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.verificationCode) {
+          currentUser.verificationCode = data.verificationCode;
+          localStorage.setItem('cronwa_user', JSON.stringify(currentUser));
+          const displayBox = document.getElementById('waVerifCodeDisplay');
+          const codeEl = document.getElementById('settingsVerifCode');
+          if (displayBox && codeEl) {
+            codeEl.textContent = formatVerifCode(data.verificationCode);
+            displayBox.style.display = 'block';
+          }
+          showToast('Verification code generated', 'success');
+        } else {
+          showAlert(alert, 'danger', data.error || 'Failed to generate verification code.');
+        }
+      } catch (err) {
+        showAlert(alert, 'danger', 'Network error while generating verification code.');
+      } finally {
+        genVerifBtn.disabled = false;
+      }
+    });
+  }
 
+  // Change Password Form
+  const changePasswordForm = document.getElementById('changePasswordForm');
+  if (changePasswordForm) {
+    changePasswordForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const currentPass = document.getElementById('currentPasswordInput').value;
+      const newPass = document.getElementById('newPasswordInput').value;
+      const alert = document.getElementById('settingsAlertContainer');
+      const btn = document.getElementById('changePasswordBtn');
+      alert.innerHTML = '';
 
-  // Refresh logs button
-  document.getElementById('refreshLogsBtn').addEventListener('click', () => refreshLogs());
+      if (!newPass || newPass.length < 6) {
+        showAlert(alert, 'danger', 'New password must be at least 6 characters.');
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const currentPasswordHash = await sha256Hex(currentPass);
+        const newPasswordHash = await sha256Hex(newPass);
+        const res = await fetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+          body: JSON.stringify({ currentPasswordHash, newPasswordHash })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          changePasswordForm.reset();
+          showAlert(alert, 'success', 'Password updated! Please sign in again with your new password.');
+          showToast('Password updated. Signing out…', 'success');
+          setTimeout(() => logout(), 1500);
+        } else {
+          showAlert(alert, 'danger', data.error || 'Failed to update password.');
+        }
+      } catch (err) {
+        showAlert(alert, 'danger', 'Network error while updating password.');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
 
   // Calendar Navigation
   document.getElementById('calPrevBtn').addEventListener('click', () => {
@@ -1035,6 +1320,7 @@ function setupDialogLightDismiss() {
 // ALERTS
 // ---------------------------------------------------------------
 function showAlert(container, type, message) {
+  if (!container) return;
   container.innerHTML = `<div class="alert alert-${type}"><div>${message}</div></div>`;
 }
 
@@ -1216,10 +1502,10 @@ function renderTasksList(tasks) {
   
   // Build header
   const headerHtml = `
-    <th style="width: 32%;">Task Details</th>
-    <th style="width: 32%;">Message</th>
-    <th style="width: 24%;">Schedule &amp; Runs</th>
-    <th style="width: 12%; text-align: right;">Actions</th>
+    <th style="width: 30%;">Task Details</th>
+    <th style="width: 30%;">Message</th>
+    <th style="width: 24%;">Schedule &amp; Next / Last Run</th>
+    <th style="width: 16%; text-align: right;">Actions</th>
   `;
   if (headerRow) headerRow.innerHTML = headerHtml;
 
@@ -1235,21 +1521,19 @@ function renderTasksList(tasks) {
     let schedDetail = '';
     const spec = task.scheduleSpec || {};
     if (task.task_type === 'OneTime' && spec.run_at) {
-      schedDetail = `Once: ${new Date(spec.run_at).toLocaleString()}`;
+      schedDetail = `Once (${formatDateTimeGMT8(spec.run_at)})`;
     } else if (task.task_type === 'Interval') {
       schedDetail = `Every ${spec.interval_secs}s`;
     } else if (task.task_type === 'Cron') {
       schedDetail = `Cron: ${spec.expression}`;
     }
 
-    const nextRun = task.next_run_at ? new Date(task.next_run_at).toLocaleString() : '—';
-    const lastRun = task.last_run_at ? new Date(task.last_run_at).toLocaleString() : 'Never';
-    
     const ownerText = currentUser.isAdmin
       ? ` • by ${escapeHtml(task.owner_username || 'Unknown')}`
       : '';
 
     let actionBtns = '';
+    actionBtns += `<button class="btn btn-secondary btn-sm" onclick="runTaskNow('${task.id}')" title="Test Send / Run Now" style="padding: 0.35rem 0.5rem; color: var(--accent);">⚡</button>`;
     if (task.status === 'Active') {
       actionBtns += `<button class="btn btn-secondary btn-sm" onclick="pauseTask('${task.id}')" title="Pause" style="padding: 0.35rem 0.5rem;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg></button>`;
     } else if (task.status === 'Paused' || task.status === 'Failed') {
@@ -1262,9 +1546,16 @@ function renderTasksList(tasks) {
       ? '<span class="badge badge-xs" style="background-color: rgba(14, 165, 233, 0.12); color: #7dd3fc; border: 1px solid rgba(14, 165, 233, 0.2);">Event Reminder</span>'
       : '';
 
+    const primaryTs = task.task_type === 'OneTime'
+      ? (task.last_run_at || task.next_run_at)
+      : (task.next_run_at || task.last_run_at);
+    const tsLabel = task.task_type === 'OneTime'
+      ? (task.last_run_at ? 'Sent' : 'Run')
+      : (task.next_run_at ? 'Next' : 'Last');
+
     tr.innerHTML = `
       <td>
-        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
           <span class="td-name">${escapeHtml(task.name)}</span>
           ${task.status !== 'Active' ? `<span class="badge ${statusClass}">${task.status}</span>` : ''}
           <span class="badge badge-primary badge-xs">${task.task_type}</span>
@@ -1279,15 +1570,8 @@ function renderTasksList(tasks) {
         ${escapeHtml(task.message_template)}
       </td>
       <td>
-        <div style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary);">${escapeHtml(schedDetail)}</div>
-        <div class="td-meta" style="margin-top: 0.25rem; line-height: 1.3;">
-          ${task.task_type === 'OneTime'
-            ? (task.last_run_at
-              ? `<div>Sent: ${new Date(task.last_run_at).toLocaleString()}</div>`
-              : `<div>Scheduled for ${task.next_run_at ? new Date(task.next_run_at).toLocaleString() : '—'}</div>`)
-            : `<div>Last: ${lastRun}</div><div>Next: ${nextRun}</div>`
-          }
-        </div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.2rem;">${escapeHtml(schedDetail)}</div>
+        ${renderStackedDateTime(primaryTs, true, tsLabel)}
       </td>
       <td>
         <div style="display: flex; justify-content: flex-end; gap: 0.35rem;">
@@ -1299,33 +1583,284 @@ function renderTasksList(tasks) {
   });
 }
 
+async function runTaskNow(taskId) {
+  const alertEl = document.getElementById('dashboardAlertContainer');
+  try {
+    showToast('Triggering test send…', 'info');
+    const res = await fetch(`/api/tasks/${taskId}/run-now`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiToken}` }
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(data.message || 'Task sent immediately!', 'success');
+      showAlert(alertEl, 'success', data.message || 'Task sent immediately!');
+      refreshTasks(true);
+      refreshStats();
+      refreshLogs(true);
+    } else {
+      showToast(data.error || 'Test send failed', 'danger');
+      showAlert(alertEl, 'danger', data.error || 'Test send failed');
+    }
+  } catch (err) {
+    showToast('Network error while triggering task', 'danger');
+    showAlert(alertEl, 'danger', 'Network error while triggering task.');
+  }
+}
+
+window.runTaskFromDialog = async function() {
+  const taskId = document.getElementById('taskIdField').value;
+  if (!taskId) return;
+  await runTaskNow(taskId);
+};
+
 async function pauseTask(taskId) {
+  const alertEl = document.getElementById('dashboardAlertContainer');
   try {
     const res = await fetch(`/api/tasks/${taskId}/pause`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${apiToken}` }
     });
-    if (res.ok) { refreshTasks(); refreshStats(); }
-  } catch (err) {}
+    if (res.ok) {
+      refreshTasks();
+      refreshStats();
+      showToast('Task paused', 'info');
+    } else {
+      const data = await res.json();
+      showAlert(alertEl, 'danger', data.error || 'Failed to pause task');
+    }
+  } catch (err) {
+    showAlert(alertEl, 'danger', 'Network error while pausing task.');
+  }
 }
 
 async function resumeTask(taskId) {
+  const alertEl = document.getElementById('dashboardAlertContainer');
   try {
     const res = await fetch(`/api/tasks/${taskId}/resume`, {
       method: 'POST', headers: { 'Authorization': `Bearer ${apiToken}` }
     });
-    if (res.ok) { refreshTasks(); refreshStats(); }
-  } catch (err) {}
+    if (res.ok) {
+      refreshTasks();
+      refreshStats();
+      showToast('Task resumed', 'success');
+    } else {
+      const data = await res.json();
+      showAlert(alertEl, 'danger', data.error || 'Failed to resume task');
+    }
+  } catch (err) {
+    showAlert(alertEl, 'danger', 'Network error while resuming task.');
+  }
 }
 
-async function deleteTask(taskId) {
-  if (!confirm('Delete this task?')) return;
-  try {
-    const res = await fetch(`/api/tasks/${taskId}`, {
-      method: 'DELETE', headers: { 'Authorization': `Bearer ${apiToken}` }
-    });
-    if (res.ok) { refreshTasks(); refreshStats(); }
-  } catch (err) {}
+function deleteTask(taskId) {
+  const task = cachedTasks.find(t => t.id === taskId);
+  const taskLabel = task ? `"${task.name}"` : 'this task';
+  openConfirmDialog({
+    title: 'Delete Task',
+    message: `Are you sure you want to permanently delete ${taskLabel}?`,
+    confirmText: 'Delete task',
+    danger: true,
+    onConfirm: async () => {
+      const alertEl = document.getElementById('dashboardAlertContainer');
+      try {
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: 'DELETE', headers: { 'Authorization': `Bearer ${apiToken}` }
+        });
+        if (res.ok) {
+          refreshTasks();
+          refreshStats();
+          showToast('Task deleted', 'success');
+        } else {
+          const data = await res.json();
+          showAlert(alertEl, 'danger', data.error || 'Failed to delete task');
+        }
+      } catch (err) {
+        showAlert(alertEl, 'danger', 'Network error while deleting task.');
+      }
+    }
+  });
 }
+
+// ---------------------------------------------------------------
+// CRON PRESETS, LIVE SCHEDULE PREVIEW & LIVE MESSAGE PREVIEW
+// ---------------------------------------------------------------
+window.setCronPreset = function(expr) {
+  const cronInput = document.getElementById('cronExpr');
+  if (cronInput) {
+    cronInput.value = expr;
+    schedulePreviewUpdate();
+  }
+};
+
+window.setIntervalPreset = function(secs) {
+  const intervalInput = document.getElementById('intervalSecs');
+  if (intervalInput) {
+    intervalInput.value = secs;
+    schedulePreviewUpdate();
+  }
+};
+
+function schedulePreviewUpdate() {
+  if (schedulePreviewTimer) clearTimeout(schedulePreviewTimer);
+  schedulePreviewTimer = setTimeout(updateSchedulePreview, 220);
+}
+
+async function updateSchedulePreview() {
+  const previewBox = document.getElementById('schedulePreviewBox');
+  if (!previewBox) return;
+
+  const taskType = document.getElementById('taskType').value;
+  let scheduleSpec = null;
+
+  if (taskType === 'OneTime') {
+    const sendImm = document.getElementById('sendImmediately').checked;
+    if (sendImm) {
+      previewBox.style.display = 'block';
+      previewBox.innerHTML = `<div class="schedule-preview-title">Upcoming Schedule (GMT+8)</div><div class="schedule-preview-item">1. Immediate execution upon saving</div>`;
+      return;
+    }
+    const val = document.getElementById('runAt').value;
+    if (!val) {
+      previewBox.style.display = 'none';
+      return;
+    }
+    scheduleSpec = { run_at: parseLocalDatetimeInputGMT8(val) };
+  } else if (taskType === 'Interval') {
+    const secs = parseInt(document.getElementById('intervalSecs').value, 10);
+    if (!secs || secs < 60) {
+      previewBox.style.display = 'none';
+      return;
+    }
+    scheduleSpec = { interval_secs: secs };
+  } else if (taskType === 'Cron') {
+    const expr = document.getElementById('cronExpr').value.trim();
+    if (!expr) {
+      previewBox.style.display = 'none';
+      return;
+    }
+    scheduleSpec = { expression: expr };
+  }
+
+  try {
+    const res = await fetch('/api/tasks/preview-schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+      body: JSON.stringify({ taskType, scheduleSpec })
+    });
+    const data = await res.json();
+    previewBox.style.display = 'block';
+    if (!res.ok || !data.valid || !data.nextRuns || data.nextRuns.length === 0) {
+      previewBox.innerHTML = `<div class="schedule-preview-title" style="color: var(--danger);">Invalid or Past Schedule</div><div class="schedule-preview-item">${escapeHtml(data.error || 'No future runs found for this specification.')}</div>`;
+      return;
+    }
+    const itemsHtml = data.nextRuns.map((ts, idx) => {
+      return `<div class="schedule-preview-item">${idx + 1}. ${formatDateTimeGMT8(ts)}</div>`;
+    }).join('');
+    previewBox.innerHTML = `<div class="schedule-preview-title">Next ${data.nextRuns.length} Run${data.nextRuns.length > 1 ? 's' : ''} (GMT+8)</div>${itemsHtml}`;
+  } catch (err) {
+    previewBox.style.display = 'none';
+  }
+}
+
+window.previewTaskMessage = async function() {
+  const template = document.getElementById('messageTemplate').value.trim();
+  const previewBox = document.getElementById('messagePreviewBox');
+  const btn = document.getElementById('previewMessageBtn');
+  if (!previewBox) return;
+
+  if (!template) {
+    previewBox.style.display = 'block';
+    previewBox.textContent = 'Enter a message template above to preview resolved placeholders.';
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Resolving…';
+  }
+  try {
+    const res = await fetch('/api/tasks/preview-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+      body: JSON.stringify({ messageTemplate: template })
+    });
+    const data = await res.json();
+    previewBox.style.display = 'block';
+    if (res.ok && data.resolvedMessage !== undefined) {
+      previewBox.textContent = data.resolvedMessage;
+    } else {
+      previewBox.textContent = `Preview error: ${data.error || 'Failed to resolve placeholders'}`;
+    }
+  } catch (err) {
+    previewBox.style.display = 'block';
+    previewBox.textContent = 'Network error while previewing message.';
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Preview live variables';
+    }
+  }
+};
+
+function renderTaskContactPickers() {
+  const primaryBar = document.getElementById('taskPrimaryContactPicker');
+  const broadcastBar = document.getElementById('taskBroadcastContactPicker');
+  if (!primaryBar || !broadcastBar) return;
+
+  if (!cachedContacts || cachedContacts.length === 0) {
+    primaryBar.style.display = 'none';
+    broadcastBar.style.display = 'none';
+    return;
+  }
+
+  // Primary contact chips
+  primaryBar.style.display = 'flex';
+  primaryBar.innerHTML = `<span style="font-size: 0.7rem; color: var(--text-muted); align-self: center; margin-right: 0.25rem;">Saved:</span>` +
+    cachedContacts.map(c => {
+      return `<button type="button" class="cron-chip" onclick="selectPrimaryContact('${escapeHtml(c.phone)}')">${escapeHtml(c.name)}</button>`;
+    }).join('');
+
+  // Broadcast group chips + individual contact chips
+  const groups = {};
+  cachedContacts.forEach(c => {
+    if (c.group_name) {
+      if (!groups[c.group_name]) groups[c.group_name] = [];
+      groups[c.group_name].push(c.phone);
+    }
+  });
+
+  const groupChips = Object.keys(groups).map(gName => {
+    const phonesCsv = groups[gName].join(',');
+    return `<button type="button" class="cron-chip" style="border-color: rgba(99, 102, 241, 0.4); color: #a5b4fc;" onclick="appendBroadcastRecipients('${escapeHtml(phonesCsv)}')">+ Group: ${escapeHtml(gName)} (${groups[gName].length})</button>`;
+  });
+
+  const contactChips = cachedContacts.map(c => {
+    return `<button type="button" class="cron-chip" onclick="appendBroadcastRecipients('${escapeHtml(c.phone)}')">+ ${escapeHtml(c.name)}</button>`;
+  });
+
+  broadcastBar.style.display = 'flex';
+  broadcastBar.innerHTML = [...groupChips, ...contactChips].join('');
+}
+
+window.selectPrimaryContact = function(phone) {
+  const input = document.getElementById('taskTargetWaChatId');
+  if (input) input.value = phone;
+};
+
+window.appendBroadcastRecipients = function(phonesCsv) {
+  const input = document.getElementById('targetList');
+  if (!input) return;
+  const existing = input.value
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const incoming = phonesCsv
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  const merged = [...new Set([...existing, ...incoming])];
+  input.value = merged.join(', ');
+};
 
 // Task dialog
 function openTaskDialog(taskId = null) {
@@ -1334,6 +1869,13 @@ function openTaskDialog(taskId = null) {
   
   const idField = document.getElementById('taskIdField');
   const title = document.getElementById('taskDialogTitle');
+  const dialogAlert = document.getElementById('taskDialogAlertContainer');
+  const previewBox = document.getElementById('schedulePreviewBox');
+  const msgPreviewBox = document.getElementById('messagePreviewBox');
+  const runNowBtn = document.getElementById('taskDialogRunNowBtn');
+  if (dialogAlert) dialogAlert.innerHTML = '';
+  if (previewBox) previewBox.style.display = 'none';
+  if (msgPreviewBox) msgPreviewBox.style.display = 'none';
   
   document.querySelectorAll('.schedule-field').forEach(f => f.style.display = 'none');
   document.getElementById('oneTimeFields').style.display = 'block';
@@ -1351,12 +1893,15 @@ function openTaskDialog(taskId = null) {
     accordion.open = false;
   }
 
+  renderTaskContactPickers();
+
   if (taskId) {
     const task = cachedTasks.find(t => t.id === taskId);
     if (!task) return;
     
     title.textContent = 'Edit Task';
     idField.value = task.id;
+    if (runNowBtn) runNowBtn.style.display = 'inline-flex';
     
     document.getElementById('taskName').value = task.name;
     document.getElementById('taskType').value = task.task_type;
@@ -1369,7 +1914,7 @@ function openTaskDialog(taskId = null) {
     const spec = task.scheduleSpec || {};
     if (task.task_type === 'OneTime') {
       document.getElementById('oneTimeFields').style.display = 'block';
-      if (spec.run_at) document.getElementById('runAt').value = new Date(spec.run_at).toISOString().slice(0, 16);
+      if (spec.run_at) document.getElementById('runAt').value = toLocalDatetimeInputGMT8(spec.run_at);
     } else if (task.task_type === 'Interval') {
       document.getElementById('intervalFields').style.display = 'block';
       document.getElementById('intervalSecs').value = spec.interval_secs || 3600;
@@ -1383,9 +1928,11 @@ function openTaskDialog(taskId = null) {
     if (accordion) {
       accordion.open = !!hasBroadcast;
     }
+    schedulePreviewUpdate();
   } else {
     title.textContent = 'Create Task';
     idField.value = '';
+    if (runNowBtn) runNowBtn.style.display = 'none';
     document.getElementById('taskTargetWaChatId').value = currentUser.chatId || '';
   }
   
@@ -1401,6 +1948,8 @@ async function handleTaskFormSubmit(e) {
   const messageTemplate = document.getElementById('messageTemplate').value.trim();
   const messageTemplate2 = document.getElementById('messageTemplate2').value.trim();
   const targetListText = document.getElementById('targetList').value.trim();
+  const dialogAlert = document.getElementById('taskDialogAlertContainer');
+  if (dialogAlert) dialogAlert.innerHTML = '';
   
   const targetList = targetListText ? targetListText.split(',').map(s => s.trim()).filter(Boolean) : [];
     
@@ -1411,16 +1960,25 @@ async function handleTaskFormSubmit(e) {
       scheduleSpec = { run_at: new Date().toISOString() };
     } else {
       const val = document.getElementById('runAt').value;
-      if (!val) return alert('Please enter a trigger date.');
-      scheduleSpec = { run_at: new Date(val).toISOString() };
+      if (!val) {
+        showAlert(dialogAlert, 'danger', 'Please select a trigger date and time.');
+        return;
+      }
+      scheduleSpec = { run_at: parseLocalDatetimeInputGMT8(val) };
     }
   } else if (taskType === 'Interval') {
     const secs = parseInt(document.getElementById('intervalSecs').value, 10);
-    if (!secs || secs < 60) return alert('Interval must be at least 60 seconds.');
+    if (!secs || secs < 60) {
+      showAlert(dialogAlert, 'danger', 'Interval must be at least 60 seconds.');
+      return;
+    }
     scheduleSpec = { interval_secs: secs };
   } else if (taskType === 'Cron') {
     const cron = document.getElementById('cronExpr').value.trim();
-    if (!cron) return alert('Please enter a cron expression.');
+    if (!cron) {
+      showAlert(dialogAlert, 'danger', 'Please enter a valid cron expression.');
+      return;
+    }
     scheduleSpec = { expression: cron };
   }
 
@@ -1453,46 +2011,71 @@ async function handleTaskFormSubmit(e) {
       refreshStats();
       showAlert(alertEl, 'success', `Task ${taskId ? 'updated' : 'created'}!`);
     } else {
-      alert(data.error || 'Failed to save task.');
+      showAlert(dialogAlert, 'danger', data.error || 'Failed to save task.');
     }
   } catch (err) {
-    alert('Network error.');
+    showAlert(dialogAlert, 'danger', 'Network error while saving task.');
   } finally {
     submitBtn.disabled = false;
   }
 }
 
 // ---------------------------------------------------------------
-// LOGS
+// LOGS (Search, Status Filter & One-Click Retry)
 // ---------------------------------------------------------------
 async function refreshLogs(silent = false) {
   if (!apiToken) return;
   
-  // SWR: render from cache instantly
   if (cachedLogs && cachedLogs.length > 0) {
-    renderLogsList(cachedLogs);
-  }
-  
-  const btn = document.getElementById('refreshLogsBtn');
-  if (!silent && btn) {
-    btn.disabled = true;
-    btn.textContent = 'Refreshing…';
+    applyLogFilterAndRender();
   }
   
   try {
     const res = await fetch('/api/logs', { headers: { 'Authorization': `Bearer ${apiToken}` } });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (!silent) showAlert(document.getElementById('logsAlertContainer'), 'danger', 'Failed to load send logs.');
+      return;
+    }
     const logs = await res.json();
     cachedLogs = logs;
-    renderLogsList(logs);
+    applyLogFilterAndRender();
   } catch (e) {
     console.error('Error refreshing logs:', e);
-  } finally {
-    if (!silent && btn) {
-      btn.disabled = false;
-      btn.textContent = 'Refresh';
+    if (!silent) showAlert(document.getElementById('logsAlertContainer'), 'danger', 'Network error while loading send logs.');
+  }
+}
+
+function applyLogFilterAndRender() {
+  let filtered = cachedLogs;
+
+  if (currentLogFilter === 'sent') {
+    filtered = filtered.filter(l => !!l.success);
+  } else if (currentLogFilter === 'failed') {
+    filtered = filtered.filter(l => !l.success);
+  }
+
+  if (logSearchQuery) {
+    filtered = filtered.filter(l => {
+      const nameMatch = l.task_name && l.task_name.toLowerCase().includes(logSearchQuery);
+      const jidMatch = l.target_jid && l.target_jid.toLowerCase().includes(logSearchQuery);
+      const msgMatch = l.message && l.message.toLowerCase().includes(logSearchQuery);
+      const errMatch = l.error_msg && l.error_msg.toLowerCase().includes(logSearchQuery);
+      return nameMatch || jidMatch || msgMatch || errMatch;
+    });
+  }
+
+  const summaryEl = document.getElementById('logSummaryText');
+  if (summaryEl) {
+    if (cachedLogs.length === 0) {
+      summaryEl.textContent = 'No message delivery logs yet';
+    } else {
+      const statusLabel = currentLogFilter === 'all' ? 'All' : (currentLogFilter === 'sent' ? 'Sent' : 'Failed');
+      const searchLabel = logSearchQuery ? ` matching "${logSearchQuery}"` : '';
+      summaryEl.textContent = `${filtered.length} of ${cachedLogs.length} log${cachedLogs.length === 1 ? '' : 's'} shown (${statusLabel})${searchLabel}`;
     }
   }
+
+  renderLogsList(filtered);
 }
 
 window.toggleLogDetail = function(btn, logId) {
@@ -1501,7 +2084,6 @@ window.toggleLogDetail = function(btn, logId) {
     const isHidden = container.style.display === 'none';
     container.style.display = isHidden ? 'block' : 'none';
     btn.textContent = isHidden ? 'Hide Details' : 'View Details';
-    // Style toggle
     if (isHidden) {
       btn.classList.add('btn-primary');
       btn.classList.remove('btn-secondary');
@@ -1512,12 +2094,37 @@ window.toggleLogDetail = function(btn, logId) {
   }
 };
 
+window.retryLog = async function(logId) {
+  const alertEl = document.getElementById('logsAlertContainer');
+  if (alertEl) alertEl.innerHTML = '';
+  try {
+    showToast('Retrying message send…', 'info');
+    const res = await fetch(`/api/logs/${logId}/retry`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiToken}` }
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('Message re-sent!', 'success');
+      showAlert(alertEl, 'success', 'Message re-sent!');
+    } else {
+      showToast(data.error || 'Retry send failed', 'danger');
+      showAlert(alertEl, 'danger', data.error || 'Retry send failed');
+    }
+    refreshLogs(true);
+    refreshStats();
+  } catch (err) {
+    showToast('Network error while retrying message', 'danger');
+    showAlert(alertEl, 'danger', 'Network error while retrying message.');
+  }
+};
+
 function renderLogsList(logs) {
   const tbody = document.getElementById('logsTableBody');
   tbody.innerHTML = '';
 
   if (logs.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">No logs yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 3rem;">No matching logs found.</td></tr>`;
     return;
   }
 
@@ -1531,7 +2138,6 @@ function renderLogsList(logs) {
       ? ` • by ${escapeHtml(log.owner_username || `#${log.owner_user_id}`)}`
       : '';
 
-    // Build error/response detail line
     let errorDetailHtml = '';
     if (!log.success && log.error_msg) {
       errorDetailHtml = `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 4px; word-break: break-all;">✗ ${escapeHtml(log.error_msg)}</div>`;
@@ -1543,7 +2149,7 @@ function renderLogsList(logs) {
       try { parsedRes = JSON.parse(log.api_response); } catch (e) {}
       if (parsedRes) {
         const prettyJson = JSON.stringify(parsedRes, null, 2);
-        const logId = log.id || Math.random().toString(36).substring(2, 9);
+        const logId = log.id;
         apiColumnHtml = `
           <button class="btn btn-secondary btn-sm" onclick="toggleLogDetail(this, '${logId}')">View Details</button>
           <div id="log-detail-${logId}" style="display: none; margin-top: 0.5rem; text-align: left;">
@@ -1552,6 +2158,10 @@ function renderLogsList(logs) {
         `;
       }
     }
+
+    const retryActionHtml = !log.success
+      ? `<button class="btn btn-secondary btn-sm" onclick="retryLog('${log.id}')" title="Retry sending this message">↻ Retry</button>`
+      : `<span style="color: var(--text-muted); font-size: 0.8rem;">—</span>`;
       
     tr.innerHTML = `
       <td>
@@ -1563,14 +2173,17 @@ function renderLogsList(logs) {
       </td>
       <td class="td-msg" title="${escapeHtml(log.message)}">${escapeHtml(log.message)}</td>
       <td>
-        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.25rem;">
           ${badge}
         </div>
-        <div class="td-meta" style="margin-top: 0.25rem;">${new Date(log.sent_at).toLocaleString()}</div>
+        ${renderStackedDateTime(log.sent_at, true)}
         ${errorDetailHtml}
       </td>
       <td>
         ${apiColumnHtml}
+      </td>
+      <td style="text-align: right;">
+        ${retryActionHtml}
       </td>
     `;
     tbody.appendChild(tr);
@@ -1614,11 +2227,15 @@ async function refreshCalendar(silent = false) {
     const res = await fetch(`/api/calendar?year=${calCurrentYear}&month=${calCurrentMonth}`, {
       headers: { 'Authorization': `Bearer ${apiToken}` }
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      if (!silent) showToast('Failed to load calendar data', 'danger');
+      return;
+    }
     calendarData = await res.json();
     renderCalendar(calendarData);
   } catch (e) {
     console.error('Error refreshing calendar:', e);
+    if (!silent) showToast('Network error loading calendar', 'danger');
   } finally {
     if (loaderTimeout) {
       clearTimeout(loaderTimeout);
@@ -1809,7 +2426,6 @@ function renderCalendar(data) {
       }
     }
     
-    // Check if we have logs, scheduled tasks or events for this day
     const dayLogs = (data.logs && data.logs[day]) || [];
     const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
     const dayEvents = (data.events && data.events[day]) || [];
@@ -1843,7 +2459,6 @@ function renderCalendar(data) {
     dayScheduledFiltered.forEach(item => {
       processedTaskNames.add(item.name);
       
-      // Find logs for this task on this day
       const taskLogs = dayLogsFiltered.filter(l => l.task_name === item.name);
       if (taskLogs.length > 0) {
         const hasSuccess = taskLogs.some(l => l.success);
@@ -1889,7 +2504,6 @@ function renderCalendar(data) {
     `;
     
     cell.addEventListener('click', () => {
-      // Highlight selected cell
       document.querySelectorAll('.cal-day').forEach(c => c.classList.remove('cal-day-selected'));
       cell.classList.add('cal-day-selected');
       showDayDetail(day, data);
@@ -1898,9 +2512,7 @@ function renderCalendar(data) {
     grid.appendChild(cell);
   }
   
-  // Render next month's overlapping days to fill the 6-row grid (42 cells total)
   const totalCellsRendered = firstDayIndex + totalDays;
-  const remainingCells = 42 - totalCellsRendered;
   const targetCellsCount = totalCellsRendered > 35 ? 42 : 35;
   const finalRemaining = targetCellsCount - totalCellsRendered;
   
@@ -1915,27 +2527,44 @@ function renderCalendar(data) {
 }
 
 function showDayDetail(day, data) {
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
-  
   const detailPanel = document.getElementById('calDayDetail');
   const title = document.getElementById('calDayDetailTitle');
   const content = document.getElementById('calDayDetailContent');
   
-  title.textContent = `${monthNames[data.month - 1]} ${day}, ${data.year}`;
+  const dd = String(day).padStart(2, '0');
+  const mm = String(data.month).padStart(2, '0');
+  const yy = String(data.year).slice(-2);
+  title.textContent = `${dd}-${mm}-${yy}`;
   content.innerHTML = '';
+
+  const hideDaily = localStorage.getItem('cal_hide_daily') === 'true';
+  const hideWeekly = localStorage.getItem('cal_hide_weekly') === 'true';
+  const hideMonthly = localStorage.getItem('cal_hide_monthly') === 'true';
+  const hideYearly = localStorage.getItem('cal_hide_yearly') === 'true';
+  const hideTasks = localStorage.getItem('cal_hide_tasks') === 'true';
+  const hideEvents = localStorage.getItem('cal_hide_events') === 'true';
+  const hideReminders = localStorage.getItem('cal_hide_reminders') === 'true';
+
   const dayLogs = (data.logs && data.logs[day]) || [];
   const dayScheduled = (data.scheduled && data.scheduled[day]) || [];
   const dayEvents = (data.events && data.events[day]) || [];
   
-  const dayLogsFiltered = dayLogs;
-  const dayScheduledFiltered = dayScheduled;
-  const dayEventsFiltered = dayEvents;
+  const dayLogsFiltered = hideTasks
+    ? []
+    : dayLogs.filter(l => {
+        if (hideReminders && isCalendarReminder(l)) return false;
+        return shouldShowItem(l, hideDaily, hideWeekly, hideMonthly, hideYearly);
+      });
+  const dayScheduledFiltered = hideTasks
+    ? []
+    : dayScheduled.filter(s => {
+        if (hideReminders && isCalendarReminder(s)) return false;
+        return shouldShowItem(s, hideDaily, hideWeekly, hideMonthly, hideYearly);
+      });
+  const dayEventsFiltered = hideEvents ? [] : dayEvents;
   
   if (dayLogsFiltered.length === 0 && dayScheduledFiltered.length === 0 && dayEventsFiltered.length === 0) {
-    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No logs, scheduled tasks, or events for this day.</p>`;
+    content.innerHTML = `<p style="color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1.5rem 0;">No visible logs, scheduled tasks, or events for this day.</p>`;
     detailPanel.style.display = 'block';
     return;
   }
@@ -1954,14 +2583,17 @@ function showDayDetail(day, data) {
     dayEventsFiltered.sort((a, b) => a.event_date - b.event_date);
     
     dayEventsFiltered.forEach(item => {
-      const timeStr = new Date(item.event_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = formatTimeGMT8(item.event_date);
+      const recBadge = item.recurrence && item.recurrence !== 'None'
+        ? ` <span class="badge badge-primary badge-xs">${escapeHtml(item.recurrence)}</span>`
+        : '';
       
       html += `
         <div class="cal-detail-item">
           <div class="cal-dot cal-dot-event"></div>
           <div class="cal-detail-item-info">
-            <div class="cal-detail-item-name">${escapeHtml(item.name)}</div>
-            <div class="cal-detail-item-meta">${timeStr} - ${escapeHtml(item.description || 'No description')}</div>
+            <div class="cal-detail-item-name">${escapeHtml(item.name)}${recBadge}</div>
+            <div class="cal-detail-item-meta">${timeStr} — ${escapeHtml(item.description || 'No description')}</div>
           </div>
         </div>
       `;
@@ -1981,7 +2613,7 @@ function showDayDetail(day, data) {
     dayScheduledFiltered.sort((a, b) => a.fire_at - b.fire_at);
     
     dayScheduledFiltered.forEach(item => {
-      const timeStr = new Date(item.fire_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = formatTimeGMT8(item.fire_at);
       const statusBadge = item.status === 'Paused'
         ? '<span class="badge badge-secondary" style="font-size: 0.7rem; padding: 2px 6px;">Paused</span>'
         : '<span class="badge" style="background-color: rgba(99,102,241,0.15); color: #a5b4fc; font-size: 0.7rem; padding: 2px 6px;">Active</span>';
@@ -2012,7 +2644,7 @@ function showDayDetail(day, data) {
     dayLogsFiltered.sort((a, b) => a.sent_at - b.sent_at);
     
     dayLogsFiltered.forEach(log => {
-      const timeStr = new Date(log.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const timeStr = formatTimeGMT8(log.sent_at);
       const successBadge = log.success
         ? '<span class="badge badge-success" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><polyline points="20 6 9 17 4 12"></polyline></svg>Sent</span>'
         : `<span class="badge badge-danger" style="font-size: 0.7rem; padding: 2px 6px; display: inline-flex; align-items: center;" title="${escapeHtml(log.error_msg || '')}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.2rem;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>Failed</span>`;
@@ -2050,7 +2682,7 @@ function showDayDetail(day, data) {
 }
 
 // ---------------------------------------------------------------
-// EVENTS
+// EVENTS (With Recurrence & Stacked GMT+8 Date/Time)
 // ---------------------------------------------------------------
 async function refreshEvents(silent = false) {
   if (!apiToken) return;
@@ -2083,7 +2715,6 @@ async function refreshEvents(silent = false) {
 function applyEventFilterAndRender() {
   let filtered = cachedEvents;
   
-  // Filter by event search query
   if (eventSearchQuery) {
     filtered = filtered.filter(e => {
       const nameMatch = e.name && e.name.toLowerCase().includes(eventSearchQuery);
@@ -2092,15 +2723,12 @@ function applyEventFilterAndRender() {
     });
   }
   
-  // Filter by upcoming / past selection
   const now = Date.now();
   if (currentEventFilter === 'upcoming') {
-    filtered = filtered.filter(e => e.event_date >= now);
-    // Sort upcoming events in ascending order (soonest first)
+    filtered = filtered.filter(e => e.event_date >= now || (e.recurrence && e.recurrence !== 'None'));
     filtered.sort((a, b) => a.event_date - b.event_date);
   } else if (currentEventFilter === 'past') {
-    filtered = filtered.filter(e => e.event_date < now);
-    // Sort past events in descending order (most recent first)
+    filtered = filtered.filter(e => e.event_date < now && (!e.recurrence || e.recurrence === 'None'));
     filtered.sort((a, b) => b.event_date - a.event_date);
   }
   
@@ -2139,8 +2767,6 @@ function renderEventsList(events) {
   events.forEach(event => {
     const tr = document.createElement('tr');
     
-    const eventDate = new Date(event.event_date).toLocaleString();
-    
     const offsetDescs = (event.reminders || []).map(offset => {
       if (offset === 172800) return '48h before';
       if (offset === 86400) return '24h before';
@@ -2164,6 +2790,10 @@ function renderEventsList(events) {
       ? offsetDescs.map(d => `<span class="badge badge-primary">${d}</span>`).join(' ')
       : '<span style="color: var(--text-muted); font-size: 0.8rem;">No reminders</span>';
 
+    const recurrenceBadge = event.recurrence && event.recurrence !== 'None'
+      ? `<span class="badge badge-xs" style="background-color: rgba(16, 185, 129, 0.14); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.25);">↻ ${escapeHtml(event.recurrence)}</span>`
+      : '';
+
     const actionBtns = `
       <button class="btn btn-secondary btn-sm" onclick="openEventDialog('${event.id}')" title="Edit" style="padding: 0.35rem 0.5rem;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
@@ -2175,8 +2805,11 @@ function renderEventsList(events) {
 
     tr.innerHTML = `
       <td>
-        <div class="td-name">${escapeHtml(event.name)}</div>
-        <div class="td-meta" style="margin-top: 0.25rem;">${eventDate}</div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
+          <span class="td-name">${escapeHtml(event.name)}</span>
+          ${recurrenceBadge}
+        </div>
+        ${renderStackedDateTime(event.event_date, true)}
       </td>
       <td class="td-msg" title="${escapeHtml(event.description || '')}">
         ${escapeHtml(event.description || '—')}
@@ -2196,21 +2829,35 @@ function renderEventsList(events) {
   });
 }
 
-window.deleteEvent = async function(eventId) {
-  if (!confirm('Delete this event? All its WhatsApp reminders will be deleted too.')) return;
-  try {
-    const res = await fetch(`/api/events/${eventId}`, {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${apiToken}` }
-    });
-    if (res.ok) {
-      refreshEvents();
-      refreshTasks(true);
-      refreshStats();
+window.deleteEvent = function(eventId) {
+  const ev = cachedEvents.find(e => e.id === eventId);
+  const label = ev ? `"${ev.name}"` : 'this event';
+  openConfirmDialog({
+    title: 'Delete Event',
+    message: `Are you sure you want to delete ${label}? All associated WhatsApp reminder tasks will also be deleted.`,
+    confirmText: 'Delete event',
+    danger: true,
+    onConfirm: async () => {
+      const alertEl = document.getElementById('eventsAlertContainer');
+      try {
+        const res = await fetch(`/api/events/${eventId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${apiToken}` }
+        });
+        if (res.ok) {
+          refreshEvents();
+          refreshTasks(true);
+          refreshStats();
+          showToast('Event deleted', 'success');
+        } else {
+          const data = await res.json();
+          showAlert(alertEl, 'danger', data.error || 'Failed to delete event');
+        }
+      } catch (err) {
+        showAlert(alertEl, 'danger', 'Network error while deleting event.');
+      }
     }
-  } catch (err) {
-    console.error('Error deleting event:', err);
-  }
+  });
 };
 
 window.openEventDialog = function(eventId = null) {
@@ -2219,6 +2866,10 @@ window.openEventDialog = function(eventId = null) {
   
   const idField = document.getElementById('eventIdField');
   const title = document.getElementById('eventDialogTitle');
+  const dialogAlert = document.getElementById('eventDialogAlertContainer');
+  const recurrenceSelect = document.getElementById('eventRecurrence');
+  if (dialogAlert) dialogAlert.innerHTML = '';
+  if (recurrenceSelect) recurrenceSelect.value = 'None';
   
   document.querySelectorAll('#eventForm input[name="eventReminder"]').forEach(cb => cb.checked = false);
   
@@ -2239,11 +2890,9 @@ window.openEventDialog = function(eventId = null) {
     idField.value = event.id;
     document.getElementById('eventName').value = event.name;
     document.getElementById('eventDescription').value = event.description || '';
+    if (recurrenceSelect) recurrenceSelect.value = event.recurrence || 'None';
     if (event.event_date) {
-      const date = new Date(event.event_date);
-      const tzOffset = date.getTimezoneOffset() * 60000;
-      const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-      document.getElementById('eventDate').value = localISOTime;
+      document.getElementById('eventDate').value = toLocalDatetimeInputGMT8(event.event_date);
     }
     
     const standardOffsets = [172800, 86400, 7200, 3600, 0];
@@ -2286,10 +2935,16 @@ async function handleEventFormSubmit(e) {
   const eventId = document.getElementById('eventIdField').value;
   const name = document.getElementById('eventName').value.trim();
   const eventDateStr = document.getElementById('eventDate').value;
+  const recurrence = document.getElementById('eventRecurrence') ? document.getElementById('eventRecurrence').value : 'None';
   const description = document.getElementById('eventDescription').value.trim();
+  const dialogAlert = document.getElementById('eventDialogAlertContainer');
+  if (dialogAlert) dialogAlert.innerHTML = '';
   
-  if (!eventDateStr) return alert('Please select a date and time.');
-  const eventDate = new Date(eventDateStr).toISOString();
+  if (!eventDateStr) {
+    showAlert(dialogAlert, 'danger', 'Please select a date and time.');
+    return;
+  }
+  const eventDate = parseLocalDatetimeInputGMT8(eventDateStr);
 
   const reminders = [];
   document.querySelectorAll('#eventForm input[name="eventReminder"]:checked').forEach(cb => {
@@ -2302,7 +2957,8 @@ async function handleEventFormSubmit(e) {
   const customRelationSelect = document.getElementById('eventReminderCustomRelation');
   if (customCb && customCb.checked) {
     if (!customValInput || !customValInput.value) {
-      return alert('Please enter the custom reminder value.');
+      showAlert(dialogAlert, 'danger', 'Please enter the custom reminder value.');
+      return;
     }
     const val = parseFloat(customValInput.value);
     const unit = parseInt(customUnitSelect.value || '3600', 10);
@@ -2315,11 +2971,12 @@ async function handleEventFormSubmit(e) {
       }
       reminders.push(offset);
     } else {
-      return alert('Please enter a valid positive number for custom reminder.');
+      showAlert(dialogAlert, 'danger', 'Please enter a valid positive number for custom reminder.');
+      return;
     }
   }
 
-  const payload = { name, eventDate, description, reminders };
+  const payload = { name, eventDate, recurrence, description, reminders };
   const alertEl = document.getElementById('eventsAlertContainer');
   if (alertEl) alertEl.innerHTML = '';
   const submitBtn = document.getElementById('eventFormSubmitBtn');
@@ -2349,14 +3006,190 @@ async function handleEventFormSubmit(e) {
       refreshStats();
       if (alertEl) showAlert(alertEl, 'success', `Event ${eventId ? 'updated' : 'created'}!`);
     } else {
-      alert(data.error || 'Failed to save event.');
+      showAlert(dialogAlert, 'danger', data.error || 'Failed to save event.');
     }
   } catch (err) {
-    alert('Network error.');
+    showAlert(dialogAlert, 'danger', 'Network error while saving event.');
   } finally {
     submitBtn.disabled = false;
   }
 }
+
+// ---------------------------------------------------------------
+// SAVED CONTACTS & RECIPIENT GROUPS
+// ---------------------------------------------------------------
+async function refreshContacts(silent = false) {
+  if (!apiToken) return;
+  if (cachedContacts && cachedContacts.length > 0) {
+    applyContactFilterAndRender();
+  }
+  try {
+    const res = await fetch('/api/contacts', {
+      headers: { 'Authorization': `Bearer ${apiToken}` }
+    });
+    if (!res.ok) {
+      if (!silent) showAlert(document.getElementById('contactsAlertContainer'), 'danger', 'Failed to load contacts.');
+      return;
+    }
+    cachedContacts = await res.json();
+    applyContactFilterAndRender();
+  } catch (err) {
+    if (!silent) showAlert(document.getElementById('contactsAlertContainer'), 'danger', 'Network error while loading contacts.');
+  }
+}
+
+function applyContactFilterAndRender() {
+  let filtered = cachedContacts;
+  if (contactSearchQuery) {
+    filtered = filtered.filter(c => {
+      const nameMatch = c.name && c.name.toLowerCase().includes(contactSearchQuery);
+      const phoneMatch = c.phone && c.phone.toLowerCase().includes(contactSearchQuery);
+      const groupMatch = c.group_name && c.group_name.toLowerCase().includes(contactSearchQuery);
+      const notesMatch = c.notes && c.notes.toLowerCase().includes(contactSearchQuery);
+      return nameMatch || phoneMatch || groupMatch || notesMatch;
+    });
+  }
+
+  const countText = document.getElementById('contactCountText');
+  if (countText) {
+    countText.textContent = `${filtered.length} of ${cachedContacts.length} contact${cachedContacts.length === 1 ? '' : 's'}`;
+  }
+  renderContactsList(filtered);
+}
+
+function renderContactsList(contacts) {
+  const tableContainer = document.getElementById('contactsTableContainer');
+  const emptyState = document.getElementById('contactsEmptyState');
+  const tbody = document.getElementById('contactsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (contacts.length === 0) {
+    if (tableContainer) tableContainer.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'block';
+    return;
+  }
+
+  if (tableContainer) tableContainer.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
+
+  contacts.forEach(contact => {
+    const tr = document.createElement('tr');
+    const groupBadge = contact.group_name
+      ? `<span class="badge badge-primary">${escapeHtml(contact.group_name)}</span>`
+      : `<span style="color: var(--text-muted); font-size: 0.8rem;">—</span>`;
+
+    tr.innerHTML = `
+      <td class="td-name">${escapeHtml(contact.name)}</td>
+      <td class="td-mono">${escapeHtml(contact.phone)}</td>
+      <td>${groupBadge}</td>
+      <td class="td-msg" title="${escapeHtml(contact.notes || '')}">${escapeHtml(contact.notes || '—')}</td>
+      <td>${renderStackedDateTime(contact.updated_at || contact.created_at, true)}</td>
+      <td>
+        <div style="display: flex; justify-content: flex-end; gap: 0.35rem;">
+          <button class="btn btn-secondary btn-sm" onclick="openContactDialog('${contact.id}')" title="Edit" style="padding: 0.35rem 0.5rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteContact('${contact.id}')" title="Delete" style="padding: 0.35rem 0.5rem;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+window.openContactDialog = function(contactId = null) {
+  const form = document.getElementById('contactForm');
+  if (form) form.reset();
+  const idField = document.getElementById('contactIdField');
+  const title = document.getElementById('contactDialogTitle');
+  const dialogAlert = document.getElementById('contactDialogAlertContainer');
+  if (dialogAlert) dialogAlert.innerHTML = '';
+
+  if (contactId) {
+    const contact = cachedContacts.find(c => c.id === contactId);
+    if (!contact) return;
+    title.textContent = 'Edit Contact';
+    idField.value = contact.id;
+    document.getElementById('contactName').value = contact.name;
+    document.getElementById('contactPhone').value = contact.phone;
+    document.getElementById('contactGroup').value = contact.group_name || '';
+    document.getElementById('contactNotes').value = contact.notes || '';
+  } else {
+    title.textContent = 'Add Contact';
+    idField.value = '';
+  }
+  document.getElementById('contactDialog').showModal();
+};
+
+async function handleContactFormSubmit(e) {
+  e.preventDefault();
+  const contactId = document.getElementById('contactIdField').value;
+  const name = document.getElementById('contactName').value.trim();
+  const phone = document.getElementById('contactPhone').value.trim();
+  const group_name = document.getElementById('contactGroup').value.trim();
+  const notes = document.getElementById('contactNotes').value.trim();
+  const dialogAlert = document.getElementById('contactDialogAlertContainer');
+  const alertEl = document.getElementById('contactsAlertContainer');
+  const submitBtn = document.getElementById('contactFormSubmitBtn');
+
+  if (dialogAlert) dialogAlert.innerHTML = '';
+  if (alertEl) alertEl.innerHTML = '';
+  submitBtn.disabled = true;
+
+  try {
+    const url = contactId ? `/api/contacts/${contactId}` : '/api/contacts';
+    const method = contactId ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiToken}` },
+      body: JSON.stringify({ name, phone, group_name, notes })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('contactDialog').close();
+      refreshContacts();
+      showAlert(alertEl, 'success', `Contact "${name}" ${contactId ? 'updated' : 'saved'}!`);
+    } else {
+      showAlert(dialogAlert, 'danger', data.error || 'Failed to save contact.');
+    }
+  } catch (err) {
+    showAlert(dialogAlert, 'danger', 'Network error while saving contact.');
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+window.deleteContact = function(contactId) {
+  const contact = cachedContacts.find(c => c.id === contactId);
+  const label = contact ? `"${contact.name}"` : 'this contact';
+  openConfirmDialog({
+    title: 'Delete Contact',
+    message: `Are you sure you want to delete ${label} from your saved contacts?`,
+    confirmText: 'Delete contact',
+    danger: true,
+    onConfirm: async () => {
+      const alertEl = document.getElementById('contactsAlertContainer');
+      try {
+        const res = await fetch(`/api/contacts/${contactId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${apiToken}` }
+        });
+        if (res.ok) {
+          refreshContacts();
+          showToast('Contact deleted', 'success');
+        } else {
+          const data = await res.json();
+          showAlert(alertEl, 'danger', data.error || 'Failed to delete contact.');
+        }
+      } catch (err) {
+        showAlert(alertEl, 'danger', 'Network error while deleting contact.');
+      }
+    }
+  });
+};
 
 // ---------------------------------------------------------------
 // SETTINGS
@@ -2373,6 +3206,8 @@ async function loadSettings() {
   const disconnectedEl = document.getElementById('waStatusDisconnected');
   const boundChatIdEl = document.getElementById('settingsBoundChatId');
   const manualWaNumberEl = document.getElementById('manualWaNumber');
+  const verifDisplay = document.getElementById('waVerifCodeDisplay');
+  const verifCodeEl = document.getElementById('settingsVerifCode');
   
   if (currentUser.chatId) {
     if (disconnectedEl) disconnectedEl.style.display = 'none';
@@ -2383,6 +3218,15 @@ async function loadSettings() {
     if (connectedEl) connectedEl.style.display = 'none';
     if (disconnectedEl) disconnectedEl.style.display = 'block';
     if (manualWaNumberEl) manualWaNumberEl.value = '';
+  }
+
+  if (verifDisplay && verifCodeEl) {
+    if (currentUser.verificationCode) {
+      verifCodeEl.textContent = formatVerifCode(currentUser.verificationCode);
+      verifDisplay.style.display = 'block';
+    } else {
+      verifDisplay.style.display = 'none';
+    }
   }
 
   // Revert UI to non-edit mode
@@ -2433,14 +3277,20 @@ async function fetchUsersList() {
 
 async function refreshUsers() {
   if (!apiToken || !currentUser.isAdmin) return;
+  const alert = document.getElementById('adminAlertContainer');
   try {
     const res = await fetch('/api/admin/users', { headers: { 'Authorization': `Bearer ${apiToken}` } });
-    if (!res.ok) return;
+    if (!res.ok) {
+      showAlert(alert, 'danger', 'Failed to load users.');
+      return;
+    }
     const users = await res.json();
     cachedUsers = users;
     document.getElementById('userCountText').textContent = `${users.length} user${users.length !== 1 ? 's' : ''} total`;
     renderUsersList(users);
-  } catch (e) {}
+  } catch (e) {
+    showAlert(alert, 'danger', 'Network error while loading users.');
+  }
 }
 
 function renderUsersList(users) {
@@ -2466,7 +3316,7 @@ function renderUsersList(users) {
       <td class="td-name">${escapeHtml(u.username)}</td>
       <td>${roleBadge}</td>
       <td class="td-mono">${waStatus}</td>
-      <td class="td-meta">${new Date(u.createdAt).toLocaleDateString()}</td>
+      <td>${renderStackedDateTime(u.createdAt, true)}</td>
       <td>
         <div style="display: flex; gap: 0.5rem;">
           <button class="btn btn-secondary btn-sm" onclick="openEditUserDialog('${u.id}')">Edit</button>
@@ -2478,24 +3328,31 @@ function renderUsersList(users) {
   });
 }
 
-async function deleteUser(userId, name) {
-  if (!confirm(`Delete user "${name}"? All their tasks will be deleted.`)) return;
-  const alert = document.getElementById('adminAlertContainer');
-  alert.innerHTML = '';
-  try {
-    const res = await fetch(`/api/admin/users/${userId}`, {
-      method: 'DELETE', headers: { 'Authorization': `Bearer ${apiToken}` }
-    });
-    if (res.ok) {
-      refreshUsers();
-      showAlert(alert, 'success', `User "${name}" deleted.`);
-    } else {
-      const data = await res.json();
-      showAlert(alert, 'danger', data.error || 'Failed');
+function deleteUser(userId, name) {
+  openConfirmDialog({
+    title: 'Delete User Account',
+    message: `Are you sure you want to permanently delete user "${name}"? All of their scheduled tasks, events, contacts, and logs will be deleted.`,
+    confirmText: 'Delete user',
+    danger: true,
+    onConfirm: async () => {
+      const alert = document.getElementById('adminAlertContainer');
+      alert.innerHTML = '';
+      try {
+        const res = await fetch(`/api/admin/users/${userId}`, {
+          method: 'DELETE', headers: { 'Authorization': `Bearer ${apiToken}` }
+        });
+        if (res.ok) {
+          refreshUsers();
+          showAlert(alert, 'success', `User "${name}" deleted.`);
+        } else {
+          const data = await res.json();
+          showAlert(alert, 'danger', data.error || 'Failed to delete user');
+        }
+      } catch (e) {
+        showAlert(alert, 'danger', 'Network error while deleting user');
+      }
     }
-  } catch (e) {
-    showAlert(alert, 'danger', 'Error');
-  }
+  });
 }
 
 function openEditUserDialog(userId) {
